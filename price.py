@@ -1,4 +1,4 @@
-"""Live KOIN price for /price.
+"""Live chain figures for /price, /supply and /vhpsupply.
 
 Two different assets get two different lines, on purpose:
 
@@ -37,8 +37,16 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 PLACEHOLDER = '{price}'
+SUPPLY_PLACEHOLDER = '{supply}'
+VHP_PLACEHOLDER = '{vhpsupply}'
 
 KOIN = '19GYjDBVXU7keLbYvMLazsGQn3GTWHjHkK'
+VHP = '12Y5vW6gk8GceH53YfRkRre2Rrcsgw7Naq'
+
+# Both sides of the virtual supply, with the symbol each address must
+# report back. A contract that answers with the wrong symbol is the
+# wrong contract, and the read is refused.
+SUPPLY_TOKENS = (('KOIN', KOIN), ('VHP', VHP))
 
 # KoinDX KOIN/stable pools. Hardcoded, never discovered at runtime: a
 # pool address picked up dynamically is a pool an attacker can create.
@@ -95,9 +103,21 @@ MAX_BLOCK_CHARS = 1500                # rendered block ceiling
 WINDOW_SECONDS = 600     # group-wide budget so /price cannot be a pump
 WINDOW_MAX = 20
 
+# Supply moves every block but only matters at the million scale, so it
+# is read once a day. The read date is always printed, so a figure that
+# went stale is visible as stale rather than passing for today's.
+SUPPLY_TTL = 86400
+SUPPLY_MAX_SERVE_AGE = 7 * 86400
+SUPPLY_TOLERANCE = Decimal('0.005')   # cross-host, allows for block drift
+MIN_SANE_SUPPLY = Decimal(1_000_000)
+MAX_SANE_SUPPLY = Decimal(1_000_000_000)
+
 _cache = {'ts': 0.0, 'block': None, 'fail_ts': None}
 _lock = asyncio.Lock()
 _window = []
+
+_supply_cache = {'ts': 0.0, 'data': None, 'fail_ts': None}
+_supply_lock = asyncio.Lock()
 
 
 def _hosts():
@@ -367,6 +387,90 @@ async def _bridged(session):
     return {'price': median, 'liquidity_usd': liquidity, 'pairs': len(found)}
 
 
+# --- token supply ---------------------------------------------------------
+
+async def _token_supply(session, host, symbol, address):
+    where = f'{host} {symbol} info'
+    data = await _get_json(session, f'{host}/v1/token/{address}/info')
+    if data.get('symbol') != symbol:
+        raise PriceError(f'{where}: reports symbol {data.get("symbol")!r}')
+    total = _decimal(data.get('total_supply'), where)
+    if not (MIN_SANE_SUPPLY <= total <= MAX_SANE_SUPPLY):
+        raise PriceError(f'{where}: supply {total} outside sane range')
+    return total
+
+
+async def _fetch_supplies(session):
+    """KOIN and VHP total supply, agreed by two independent hosts.
+
+    The chain head is checked first. Two hosts agreeing proves nothing
+    about freshness on its own: if both served frozen state we would
+    keep restamping today's date onto last month's numbers, which is
+    precisely the failure this module exists to refuse. A current head
+    is the anchor that makes the agreement mean something.
+    """
+    await _check_head(session)
+    readings = []
+    for host in _hosts():
+        # Concurrent, so a burn landing between the two reads can shift
+        # the pair by at most one round-trip rather than two sequential
+        # ones. KOIN and VHP cannot be read atomically through this
+        # endpoint; at roughly 4 VHP per 3-second block the residual is
+        # far below the scale anyone reads these figures at.
+        values = await asyncio.gather(*[
+            _token_supply(session, host, symbol, address)
+            for symbol, address in SUPPLY_TOKENS
+        ])
+        readings.append(dict(zip([sym for sym, _ in SUPPLY_TOKENS], values)))
+    first, second = readings[0], readings[1]
+    for symbol, _address in SUPPLY_TOKENS:
+        low = min(first[symbol], second[symbol])
+        if low <= 0 or abs(first[symbol] - second[symbol]) / low > SUPPLY_TOLERANCE:
+            raise PriceError(f'hosts disagree on {symbol} supply')
+    return {
+        'koin': first['KOIN'],
+        'vhp': first['VHP'],
+        'virtual': first['KOIN'] + first['VHP'],
+        'date': time.strftime('%Y-%m-%d', time.gmtime()),
+    }
+
+
+async def get_supplies():
+    """KOIN and VHP supply, read once a day. None when unpublishable."""
+    if not _enabled():
+        return None
+    now = time.monotonic()
+    if _supply_cache['data'] and now - _supply_cache['ts'] < SUPPLY_TTL:
+        return _supply_cache['data']
+    async with _supply_lock:
+        now = time.monotonic()
+        if _supply_cache['data'] and now - _supply_cache['ts'] < SUPPLY_TTL:
+            return _supply_cache['data']
+
+        def servable():
+            if not _supply_cache['data']:
+                return None
+            if time.monotonic() - _supply_cache['ts'] >= SUPPLY_MAX_SERVE_AGE:
+                return None
+            return _supply_cache['data']
+
+        if _supply_cache['fail_ts'] is not None and \
+                now - _supply_cache['fail_ts'] < FAIL_TTL:
+            return servable()
+        try:
+            timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                data = await asyncio.wait_for(_fetch_supplies(session), DEADLINE)
+        except Exception as e:
+            logger.warning(f'supply unavailable: {e}')
+            _supply_cache['fail_ts'] = time.monotonic()
+            return servable()
+        _supply_cache['ts'] = time.monotonic()
+        _supply_cache['fail_ts'] = None
+        _supply_cache['data'] = data
+        return data
+
+
 # --- rendering ------------------------------------------------------------
 
 def _money(value, places=6):
@@ -375,6 +479,10 @@ def _money(value, places=6):
 
 def _whole(value):
     return f'${value:,.0f}'
+
+
+def _tokens(value):
+    return f'{value:,.0f}'
 
 
 def _build(native, bridged, read_ts):
@@ -400,6 +508,26 @@ def _build_checked(native, bridged, read_ts):
     if len(block) > MAX_BLOCK_CHARS:
         raise PriceError(f'rendered block is {len(block)} characters')
     return block
+
+
+def _supply_block(data):
+    return '\n'.join([
+        f'💰 <b>{_tokens(data["virtual"])} KOIN</b> virtual supply',
+        f'<i>{_tokens(data["koin"])} KOIN + {_tokens(data["vhp"])} VHP · '
+        f'read {data["date"]}</i>',
+    ])
+
+
+def _vhp_block(data):
+    return '\n'.join([
+        f'🔥 <b>{_tokens(data["vhp"])} VHP</b>',
+        f'<i>{(data["vhp"] / data["virtual"] * 100):.1f}% of the virtual supply · '
+        f'read {data["date"]}</i>',
+    ])
+
+
+SUPPLY_NO_DATA = ('🤔 <b>Supply data unavailable right now.</b>\n'
+                  '<i>Try again in a few minutes.</i>')
 
 
 NO_DATA = '\n'.join([
@@ -473,15 +601,34 @@ async def get_block():
 
 
 async def render(text):
-    """Substitute the price placeholder in a content command body.
+    """Substitute the live-figure placeholders in a command body.
 
-    Never raises, and never lets the placeholder reach Telegram.
+    Never raises, and never lets a placeholder reach Telegram.
     """
-    if PLACEHOLDER not in text:
-        return text
-    try:
-        block = await get_block()
-    except Exception as e:
-        logger.warning(f'price render failed: {e}')
-        block = None
-    return text.replace(PLACEHOLDER, block or NO_DATA)
+    if PLACEHOLDER in text:
+        try:
+            block = await get_block()
+        except Exception as e:
+            logger.warning(f'price render failed: {e}')
+            block = None
+        text = text.replace(PLACEHOLDER, block or NO_DATA)
+
+    if SUPPLY_PLACEHOLDER in text or VHP_PLACEHOLDER in text:
+        try:
+            data = await get_supplies()
+        except Exception as e:
+            logger.warning(f'supply render failed: {e}')
+            data = None
+        for placeholder, build in ((SUPPLY_PLACEHOLDER, _supply_block),
+                                   (VHP_PLACEHOLDER, _vhp_block)):
+            if placeholder not in text:
+                continue
+            block = None
+            if data:
+                try:
+                    block = build(data)
+                except Exception as e:
+                    logger.warning(f'supply block failed: {e}')
+            text = text.replace(placeholder, block or SUPPLY_NO_DATA)
+
+    return text
