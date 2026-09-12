@@ -36,13 +36,6 @@ projects:
     emoji: 📈
     tagline: On-chain order-book DEX
 
-  - id: kollection
-    name: Kollection
-    url: https://github.com/kollection-nft
-    category: dApps & Platforms
-    emoji: 🎨
-    tagline: Open-source NFT marketplace
-
   - id: ouro
     name: OURO
     url: https://ouro.lifestyle/
