@@ -83,7 +83,7 @@ projects:
     url: https://koinosscan.com/
     category: Infrastructure
     emoji: 🔍
-    tagline: Explorer for balances, transfers and NFTs
+    tagline: Explorer for balances and transfers
 
   - id: koinscan
     name: Koinscan

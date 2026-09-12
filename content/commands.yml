@@ -251,7 +251,6 @@ commands:
       💬 <b>Community</b>
       /x — latest post from @KoinosNetwork
       /social — official channels
-      /international — groups in your language
       /rules — community guidelines
       /report — call a moderator
       /menu — the button menu (also /start and /info)
@@ -313,24 +312,6 @@ menus:
     💝 <a href="https://github.com/sponsors/joticajulian">Support the developer</a>
 
     🔒 <b>Security:</b> <i>Never share your seed phrase. Nobody from the team will ever ask for it.</i>
-  international: |-
-    🌍 <b>Global Koinos Community</b>
-
-    <i>Connect with Koinos enthusiasts worldwide!</i>
-
-    🇩🇪 <a href="https://t.me/koinosgermany">Deutschland</a> - German Community
-    🇪🇸 <a href="https://t.me/koinoshispano">España</a> - Spanish Community
-    🇨🇳 <a href="https://t.me/koinos_cn">中国</a> - Chinese Community
-    🇮🇹 <a href="https://t.me/+8KIVdg8vhIQ5ZGY0">Italia</a> - Italian Community
-    🇮🇷 <a href="https://t.me/PersianKoinos">ایران</a> - Persian Community
-    🇹🇷 <a href="https://t.me/+ND37ePjNlvc4NGE0">Türkiye</a> - Turkish Community
-    🇷🇺 <a href="https://t.me/koinosnetwork_rus">Россия</a> - Russian Community
-    🇳🇱 <a href="https://t.me/KoinosNederland">Nederland</a> - Dutch Community
-
-    🌟 <i>Missing your language? Help us create a new community!</i>
-
-    🤝 <b>Note:</b> <i>These are unofficial community groups</i>
-
   social: |-
     📱 <b>Connect With Koinos</b>
 
@@ -346,8 +327,6 @@ menus:
     🛠️ <a href="https://www.youtube.com/@motoengineer.koinos">Motoengineer</a> - Tech tutorials
     📢 <a href="https://t.me/KoinosNews">News Telegram</a> - Breaking news
     🚀 <a href="https://t.me/thekoinosarmy">Koinos Army</a> - Price &amp; trading
-
-    🌍 <i>Don't forget to check /international for local communities!</i>
 
     💫 <b>Stay updated with the latest from Koinos!</b>
 
