@@ -256,9 +256,6 @@ commands:
       /report — call a moderator
       /menu — the button menu (also /start and /info)
 
-      🤖 <b>Ask the AI</b>
-      Write <b>@kai</b> followed by your question in the main group.
-
       💡 <i>Aliases: /commands for this list, /address for /contract, /bridges for /bridge, /docs for /guides, /buy or /cex for /exchanges, /media for /social.</i>
 
   bridge:
