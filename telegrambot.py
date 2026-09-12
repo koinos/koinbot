@@ -11,6 +11,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 import content
 import kai
+import links
 import price
 import xfeed
 
@@ -36,6 +37,13 @@ new_users = {}
 # enforcement has actually succeeded; the claim only prevents the
 # same user from being processed twice concurrently.
 captcha_claimed = set()
+# (user_id, chat_id) -> the message id of that user's own captcha in that
+# chat. Without this the answer handler deletes whatever message the
+# sender replied to, which let a pending user delete anyone's message by
+# replying "Koinos" to it. Keyed by the pair, not the user, so a welcome
+# event in a second group cannot overwrite the challenge a user still
+# owes here — the id would then point at an unrelated message.
+captcha_msg_ids = {}
 new_users_lock = asyncio.Lock()
 
 # Configuration
@@ -53,7 +61,13 @@ def mention(user):
     if user.username:
         return f'@{user.username}'
     if user.first_name:
-        return html.escape(user.first_name, quote=False)
+        # A display name is attacker-chosen text that the bot repeats in
+        # the welcome, warning and report messages. Escaping stops
+        # markup but not Telegram's automatic linking of a bare URL, so
+        # a member could name themselves "Claim https://evil.tld" and
+        # have the bot publish a working phishing link.
+        name = links.defang(links.defuse_mentions(user.first_name))[:64]
+        return html.escape(name, quote=False)
     return f'User{user.id}'
 
 
@@ -151,7 +165,13 @@ async def captcha_gate(message):
 
     # Only a text reply to the captcha counts as an answer attempt —
     # media replies are ordinary violations.
-    if message.content_type == 'text' and message.reply_to_message is not None:
+    async with new_users_lock:
+        own_captcha = captcha_msg_ids.get((message.from_user.id, message.chat.id))
+    is_answer = (message.content_type == 'text'
+                 and message.reply_to_message is not None
+                 and own_captcha is not None
+                 and message.reply_to_message.id == own_captcha)
+    if is_answer:
         await handle_captcha_response(message)
     else:
         logger.warning(f"User {message.from_user.username} ({message.from_user.id}) tried to send message before completing captcha")
@@ -175,7 +195,10 @@ async def handle_welcome(message):
     # who posts immediately cannot race past the captcha gate.
     async with new_users_lock:
         for member in message.new_chat_members:
-            new_users[member.id] = current_chat_id
+            # setdefault, not assignment: a welcome event in a second
+            # group must not rebind a user who is still pending here,
+            # or their original gate can be cleared from elsewhere.
+            new_users.setdefault(member.id, current_chat_id)
 
     try:
         await bot.delete_message(current_chat_id, message.id)
@@ -193,7 +216,11 @@ async def handle_welcome(message):
     if is_admin:
         async with new_users_lock:
             for member in message.new_chat_members:
-                new_users.pop(member.id, None)
+                # Scoped to this chat, so an admin of an unrelated group
+                # cannot lift the gate a different group issued.
+                if new_users.get(member.id) == current_chat_id:
+                    new_users.pop(member.id, None)
+                    captcha_msg_ids.pop((member.id, current_chat_id), None)
         await welcome_new_users(message, message.new_chat_members)
         return
 
@@ -203,7 +230,9 @@ async def handle_welcome(message):
     random.shuffle(options)
     markup.add(*options)
 
-    captcha_messages = []
+    # member id -> that member's challenge message, so the timeout can
+    # decide per member whether the challenge may be taken down.
+    challenges = {}
     for member in message.new_chat_members:
         welcome_text = f"""🎉 <b>Welcome {mention(member)}!</b>
 
@@ -214,15 +243,16 @@ What is the name of this blockchain project?
 
         captcha_msg = await send_message(current_chat_id, welcome_text, reply_markup=markup)
         if captcha_msg:
-            captcha_messages.append(captcha_msg)
+            challenges[member.id] = captcha_msg
+            async with new_users_lock:
+                # Only while they are still pending HERE: a challenge
+                # that lands after the user was already cleared would
+                # otherwise leave an entry nothing ever removes.
+                if new_users.get(member.id) == current_chat_id:
+                    captcha_msg_ids[(member.id, current_chat_id)] = captcha_msg.message_id
 
-    # Wait for the timeout and then clean up
+    # Wait for the timeout, then enforce.
     await asyncio.sleep(CAPTCHA_TIMEOUT)
-    for captcha_message in captcha_messages:
-        try:
-            await bot.delete_message(captcha_message.chat.id, captcha_message.message_id)
-        except:
-            pass
 
     async with new_users_lock:
         expired = [m for m in message.new_chat_members
@@ -233,12 +263,29 @@ What is the name of this blockchain project?
     # Kick outside the lock — kick_user awaits the Telegram API. The
     # user stays registered (and gated) until the kick has actually
     # succeeded; on failure they simply remain pending.
+    unresolved = set()
     for member in expired:
         kicked = await kick_user(current_chat_id, member)
         async with new_users_lock:
             captcha_claimed.discard(member.id)
             if kicked:
+                captcha_msg_ids.pop((member.id, current_chat_id), None)
                 new_users.pop(member.id, None)
+            else:
+                unresolved.add(member.id)
+
+    # Take challenges down only AFTER enforcement, and never for a user
+    # whose kick failed: they are still gated, and since only a reply to
+    # their own challenge counts as an answer, deleting it first would
+    # leave them unable to answer at all while every message they send
+    # is still removed. Their challenge stays up until they resolve it.
+    for member_id, challenge in challenges.items():
+        if member_id in unresolved:
+            continue
+        try:
+            await bot.delete_message(challenge.chat.id, challenge.message_id)
+        except:
+            pass
 
 
 @bot.message_handler(commands=['info', 'start', 'menu'])
@@ -304,7 +351,10 @@ async def handle_project(message):
         return
     project = content.find_project(PROJECTS, parts[1])
     if project is None:
-        safe_query = html.escape(parts[1], quote=False)
+        # Reflected user input: defang before escaping, or
+        # "/project https://evil.tld" posts a live link as the bot.
+        safe_query = html.escape(
+            links.defang(links.defuse_mentions(parts[1][:100])), quote=False)
         await send_message(
             message.chat.id,
             f'❓ No project found for "{safe_query}". Try /projects for the full list.'
@@ -495,11 +545,13 @@ async def handle_captcha_response(message):
             # user stays gated instead of silently verified.
             if kicked:
                 new_users.pop(user_id, None)
+                captcha_msg_ids.pop((user_id, message.chat.id), None)
         return
 
     async with new_users_lock:
         captcha_claimed.discard(user_id)
         new_users.pop(user_id, None)
+        captcha_msg_ids.pop((user_id, message.chat.id), None)
     await welcome_new_users(message, [message.from_user])
 
 

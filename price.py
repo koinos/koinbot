@@ -139,7 +139,10 @@ class PriceError(Exception):
 # --- transport ------------------------------------------------------------
 
 async def _get_json(session, url, method='GET', payload=None):
-    kwargs = {'headers': {'User-Agent': UA}}
+    # allow_redirects=False on purpose: following a redirect hands a
+    # hostile or hijacked upstream the choice of destination, which is
+    # an SSRF primitive from a container that can reach the gateway.
+    kwargs = {'headers': {'User-Agent': UA}, 'allow_redirects': False}
     if method == 'POST':
         kwargs['json'] = payload
     async with session.request(method, url, **kwargs) as resp:

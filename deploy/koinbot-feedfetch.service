@@ -1,0 +1,20 @@
+# Installed at /etc/systemd/system/koinbot-feedfetch.service
+#
+# Runs as root because the mirror gates the container's TLS fingerprint.
+# Root plus a network fetch is worth confining, so the unit may touch
+# only the two paths it actually needs.
+[Unit]
+Description=Fetch X feed for koinbot (host curl passes mirror bot-gates)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/koinbot-feedfetch.sh
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/root/koinbot/feed
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes

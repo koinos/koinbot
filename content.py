@@ -67,14 +67,23 @@ def _check(cond, msg):
 def _valid_link(url):
     if any(c in url for c in ' <>"\''):
         return False
+    # A backslash is never legitimate and lets the apparent host differ
+    # from the resolved one (https://evil.com\\.koinos.io/).
+    if '\\' in url:
+        return False
     try:
         parts = urlsplit(url)
     except ValueError:
         return False
     if parts.scheme in ('http', 'https'):
+        # Userinfo in the authority is the cheapest way to mis-send a
+        # reader: https://koinos.io@evil.tld reads as koinos in a link
+        # and opens evil.tld. An @ later in the path is fine and common
+        # (medium.com/@author, youtube.com/@channel), so this checks the
+        # authority only.
+        if '@' in parts.netloc:
+            return False
         return bool(parts.hostname)
-    if parts.scheme == 'tg':
-        return bool(parts.netloc or parts.path)
     return False
 
 

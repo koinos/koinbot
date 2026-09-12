@@ -29,6 +29,8 @@ import time
 
 import aiohttp
 
+import links
+
 logger = logging.getLogger(__name__)
 
 KOINOS_AI_URL = 'https://koinosai.com'
@@ -42,14 +44,10 @@ _TRIGGER_RE = re.compile(r'(?<![\w@])@kai\b', re.IGNORECASE)
 # text, so they must pass the allowlist too. Version numbers survive
 # (the last label must be letters); the occasional file name like
 # config.yml is an accepted false positive.
-# Domain labels may be nearly anything Telegram links — including
-# emoji/symbol labels like ➡️.ws — so the label class is "no
-# whitespace, no sentence punctuation" rather than \w.
-_URL_RE = re.compile(
-    r'(?:[a-z][a-z0-9+.-]*://|tg:|www\.|t\.me/)[^\s<>()"\']+'
-    r'|(?<![\w@./])(?:[^\s<>()"\'.,;:!?@\\/]+\.)+[^\W\d_]{2,24}\b(?::\d{1,5})?(?:/[^\s<>()"\']*)?'
-    r'|(?<![\w./])(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?:/[^\s<>()"\']*)?',
-    re.IGNORECASE)
+# The URL pattern and the host check live in links.py, shared with the
+# feed relay: every path that republishes text the bot did not write
+# needs the same defence.
+_URL_RE = links.URL_RE
 
 # Hosts the model may link to; everything else is stripped from answers.
 ALLOWED_LINK_HOSTS = ('koinos.io', 'koinosai.com', 'koinscan.io')
@@ -485,37 +483,28 @@ def window_allows():
 
 
 def _host_allowed(url):
-    # Backslashes and userinfo let the apparent host differ from what
-    # clients actually resolve (https://evil.com\.koinos.io/...) —
-    # reject them outright instead of trying to parse like a browser.
-    if '\\' in url or '@' in url:
-        return False
-    # Only hierarchical http(s) may pass — tg:, javascript:, ftp: and
-    # friends (Telegram auto-links tg: deep links) are always rejected.
-    scheme = re.match(r'^([a-z][a-z0-9+.-]*):', url.lower())
-    if scheme and scheme.group(1) not in ('http', 'https'):
-        return False
-    host = re.sub(r'^[a-z][a-z0-9+.-]*://', '', url.lower())
-    host = host.split('/', 1)[0].split('?', 1)[0].split('#', 1)[0]
-    host = host.split(':', 1)[0]
-    if host.startswith('www.'):
-        host = host[4:]
-    return any(host == d or host.endswith('.' + d) for d in ALLOWED_LINK_HOSTS)
+    return links.host_allowed(url, ALLOWED_LINK_HOSTS)
 
 
 def sanitize_answer(raw):
     """Model output → safe Telegram-HTML plain text."""
     text = _CONTROL_RE.sub('', raw)
-    # Strip links to non-allowlisted hosts (scam/phishing vector if a
-    # prompt injection makes the model advertise a URL).
-    text = _URL_RE.sub(
-        lambda m: m.group(0) if _host_allowed(m.group(0)) else '[link removed]',
-        text)
-    # Break @mentions with a zero-width space so an injected "ping
-    # @someone" can never notify a real account.
-    text = text.replace('@', '@\u200b')
+    # The link pass must always run LAST, because cutting a string can
+    # expose a URL that was not there before: "evil.com.koinos.io/x"
+    # passes the allowlist, and truncating it to "evil.com" used to
+    # publish an off-allowlist link. So truncate first, strip, and if
+    # the strip pass pushed it over again, cut and strip once more.
+    # Break @mentions FIRST, for two reasons: it expands the text (one
+    # character becomes two), so doing it after the length checks could
+    # push a crafted answer past Telegram's limit; and "user@evil.tld"
+    # hides a bare domain from the URL pass until the @ is broken, so
+    # defusing afterwards would expose a live link.
+    text = links.defuse_mentions(text)
     if len(text) > 3000:
         text = text[:3000] + '…'
+    text = links.strip_links(text, ALLOWED_LINK_HOSTS)
+    if len(text) > 3600:
+        text = links.strip_links(text[:3600] + '…', ALLOWED_LINK_HOSTS)
     return html.escape(text, quote=False).strip()
 
 

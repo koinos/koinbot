@@ -6,10 +6,15 @@ unofficial scraper and notoriously flaky — every code path degrades
 gracefully: /x falls back to a plain profile link, the auto-poster
 just retries on the next cycle.
 
-Feed items are untrusted external input: tweet text is HTML-escaped
-before it reaches Telegram, links are rebuilt from the numeric status
-ID only, and the feed body is parsed with regexes (no XML parser, so
-no entity-expansion attack surface) under a hard size cap.
+Feed items are untrusted external input, and the mirror is a free
+pseudonymous service nobody here controls, so the relay is written as
+if the feed were hostile: the only clickable element in a posted
+message is the canonical x.com link, rebuilt from the numeric status
+ID. Relayed text is HTML-escaped AND every URL in it is defanged,
+because escaping stops markup but not Telegram's automatic linking of
+bare URLs. @mentions are defused so a relayed post cannot ping anyone.
+The feed body is parsed with regexes (no XML parser, so no
+entity-expansion attack surface) under a hard size cap.
 """
 import asyncio
 import html
@@ -21,6 +26,8 @@ import time
 from pathlib import Path
 
 import aiohttp
+
+import links
 
 logger = logging.getLogger(__name__)
 
@@ -90,18 +97,38 @@ def parse_feed(text):
     return posts
 
 
+def _relayed(raw):
+    """Someone else's words, rendered so they cannot act on the reader.
+
+    Escaping alone is not enough here: Telegram auto-links bare URLs in
+    plain text, so a hostile or hijacked mirror could publish a working
+    phishing link under an official-looking header. Every URL in the
+    relayed body is therefore defanged rather than removed — the reader
+    still sees exactly what was written, and the canonical link below
+    the post is the only thing that stays clickable, which also makes
+    it the only candidate for the link-preview card.
+    """
+    # Mentions first: "user@evil.tld" hides a bare domain from the URL
+    # pass until the @ is broken, so defusing afterwards would leave a
+    # live link behind.
+    text = links.defuse_mentions(raw)
+    text = links.defang(text)
+    return html.escape(text, quote=False)
+
+
 def format_post(post, header):
     """Render a post as a Telegram-HTML message."""
     # Truncate the raw text BEFORE escaping — slicing afterwards could
     # split an entity like &amp; and produce invalid Telegram HTML.
+    # Defanging runs after the cut for the same reason it does in kai:
+    # slicing a string can expose a URL that was not there before.
     raw = post['text']
     if len(raw) > MAX_POST_TEXT:
         raw = raw[:MAX_POST_TEXT] + '…'
-    text = html.escape(raw, quote=False)
     url = f'https://x.com/KoinosNetwork/status/{post["id"]}'
-    lines = [header, '', text, '']
+    lines = [header, '', _relayed(raw), '']
     if post.get('date'):
-        lines.append(f'🕐 <i>{html.escape(post["date"], quote=False)}</i>')
+        lines.append(f'🕐 <i>{_relayed(post["date"])}</i>')
     lines.append(f'🔗 <a href="{url}">View on X</a>')
     return '\n'.join(lines)
 
@@ -130,7 +157,8 @@ async def _fetch_http(url):
         # Some feed mirrors whitelist known RSS-reader agents;
         # X_FEED_UA lets us present as one without a deploy.
         ua = os.environ.get('X_FEED_UA', '').strip() or 'Mozilla/5.0 (koinbot)'
-        async with session.get(url, headers={'User-Agent': ua}) as resp:
+        async with session.get(url, headers={'User-Agent': ua},
+                               allow_redirects=False) as resp:
             if resp.status != 200:
                 raise RuntimeError(f'HTTP {resp.status}')
             # read(n) may return a partial chunk — accumulate
