@@ -14,49 +14,55 @@
 # first, across all projects) and in /project <name>.
 #
 # Merged PRs go live on the bot within ~2 minutes.
+#
+# SOURCE OF TRUTH: this list mirrors the ecosystem page on koinos.io
+# (pages/ecosystem.js in koinos/koinos-io-website), in site order within
+# each category, plus Kondor from the site's wallet section. Last synced
+# with koinos.io on 2026-09-12. Do not add a project the site does not
+# list, and re-check the URL before changing one.
 
 projects:
+  - id: koindx
+    name: KoinDX
+    url: https://koindx.com/
+    category: DeFi & Exchanges
+    emoji: 🔄
+    tagline: DEX for token swaps
+
+  - id: trade-koinos
+    name: Trade Koinos
+    url: https://tradekoinos.com/
+    category: DeFi & Exchanges
+    emoji: 📈
+    tagline: On-chain order-book DEX
+
   - id: kollection
     name: Kollection
-    url: https://kollection.app
+    url: https://github.com/kollection-nft
     category: dApps & Platforms
     emoji: 🎨
-    tagline: NFT Marketplace
+    tagline: Open-source NFT marketplace
 
-  - id: koincity
-    name: Koincity
-    url: https://koincity.com
-    category: dApps & Platforms
-    emoji: 🏙️
-    tagline: Virtual World
-
-  - id: nicknames
-    name: Nicknames
-    url: https://koinosbox.com/nicknames
-    category: dApps & Platforms
-    emoji: 📝
-    tagline: Name Service
-
-  - id: kanvas
-    name: Kanvas
-    url: https://kanvas-app.com
+  - id: ouro
+    name: OURO
+    url: https://ouro.lifestyle/
     category: dApps & Platforms
     emoji: 🖼️
-    tagline: Creative Platform
+    tagline: KCS-2 NFT marketplace
 
-  - id: koinos-garden
-    name: Koinos Garden
-    url: https://koinosgarden.com
+  - id: discover-koinos
+    name: Discover Koinos
+    url: https://usekoinos.com/
     category: dApps & Platforms
-    emoji: 🌱
-    tagline: DeFi
+    emoji: 🧭
+    tagline: Onboarding preview, no extension needed
 
-  - id: space-striker
-    name: Space Striker
-    url: https://planetkoinos.com/space_striker.html
+  - id: aurvania
+    name: Aurvania
+    url: https://aurvania.quest/
     category: Gaming
-    emoji: 🚀
-    tagline: Action Game
+    emoji: ⚔️
+    tagline: Play-to-own dungeon crawler
 
   - id: fogata
     name: Fogata
@@ -66,43 +72,78 @@ projects:
     tagline: Mining Pool
 
   - id: burn-koin
-    name: Burn Koin
+    name: BurnKoin
     url: https://burnkoin.com
     category: Mining & Staking
     emoji: 💎
-    tagline: Staking Pool
+    tagline: Mining Pool
 
   - id: koinosblocks
-    name: KoinosBlocks
+    name: Koinos Blocks
     url: https://koinosblocks.com
     category: Infrastructure
     emoji: 📊
     tagline: Block Explorer
 
+  - id: koinosscan
+    name: Koinosscan
+    url: https://koinosscan.com/
+    category: Infrastructure
+    emoji: 🔍
+    tagline: Explorer for balances, transfers and NFTs
+
+  - id: koinscan
+    name: Koinscan
+    url: https://www.koinscan.com/
+    category: Infrastructure
+    emoji: 🔎
+    tagline: Explorer with transaction and network analytics
+
+  - id: vortexbridge
+    name: VortexBridge
+    url: https://vortexbridge.io/bridge
+    category: Infrastructure
+    emoji: 🌉
+    tagline: Koinos to Ethereum bridge
+
+  - id: koinos-one
+    name: Koinos One
+    url: https://github.com/koinos/koinos-one
+    category: Infrastructure
+    emoji: 🖥️
+    tagline: Desktop app for running a node (experimental)
+
+  - id: koinoskit
+    name: KoinosKit
+    url: https://koinoskit.site/
+    category: Infrastructure
+    emoji: 🧰
+    tagline: Node, wallet and VHP manager (experimental)
+
+  - id: teleno
+    name: Teleno
+    url: https://github.com/koinos/teleno
+    category: Infrastructure
+    emoji: 🛠️
+    tagline: Monolithic Koinos-compatible node (experimental)
+
   - id: kondor
     name: Kondor
-    url: https://chrome.google.com/webstore/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl
+    url: https://chromewebstore.google.com/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl
     category: Wallets
     emoji: 🦊
-    tagline: Browser Extension (Suggested)
-
-  - id: portal
-    name: Portal
-    url: https://portal.armana.io
-    category: Wallets
-    emoji: 🌐
-    tagline: Web Wallet
-
-  - id: sovrano
-    name: Sovrano
-    url: https://sovrano.io/
-    category: Wallets
-    emoji: 👑
-    tagline: Wallet Solution (Suggested)
+    tagline: Browser Extension
 
   - id: koinos-ai
     name: Koinos AI
-    url: https://planetkoinos.com/koinos_ai.html
+    url: https://koinosai.com/
     category: AI & Tools
     emoji: 🧠
-    tagline: AI Assistant
+    tagline: Local-first AI app and compute network (alpha)
+
+  - id: koin-crew
+    name: Koin Crew
+    url: https://koincrew.com/
+    category: AI & Tools
+    emoji: 🧩
+    tagline: Suite of ecosystem utilities

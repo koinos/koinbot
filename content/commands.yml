@@ -15,6 +15,8 @@ texts:
     🔥 <b>Quick Commands:</b>
     /claim - Token claiming info
     /price - Price discussion rules
+    /contract - Token contract addresses
+    /bridge - Bridges to and from Koinos
     /supply - Token supply info
     /mana - Learn about Mana
     /updates - Latest project updates
@@ -29,6 +31,8 @@ texts:
     🔥 <b>Quick Commands:</b>
     /claim - Token claiming info
     /price - Price discussion rules
+    /contract - Token contract addresses
+    /bridge - Bridges to and from Koinos
     /supply - Token supply info
     /mana - Learn about Mana
     /updates - Latest project updates
@@ -161,24 +165,67 @@ commands:
       ⚡ <i>The future of blockchain is being built daily!</i>
 
   price:
+    link_preview: false
     text: |-
-      📈 <b>Price Discussion Guidelines</b>
+      📈 <b>KOIN Price</b>
+
+      {price}
+
+      🔎 <b>Check it yourself:</b>
+      • <a href="https://koindx.com/">KoinDX</a> — native KOIN swaps on Koinos
+      • <a href="https://koinosscan.com/chart">koinosscan /chart</a> — native KOIN and bridged vKOIN side by side
 
       🚨 <b>Keep price talk out of this group!</b>
-
-      💬 <b>Price Discussions:</b>
-      🚀 <a href="https://t.me/thekoinosarmy">Koinos Army Telegram</a>
-
-      📊 <b>Live Price Data:</b>
-      📈 <a href="https://www.coingecko.com/en/coins/koinos">CoinGecko KOIN Price</a>
-
-      💡 <i>This channel focuses on technology, development, and community!</i>
+      💬 Charts, targets and trading chat: <a href="https://t.me/thekoinosarmy">Koinos Army Telegram</a>
+      💡 <i>This channel is for technology, development and community.</i>
 
   programs:
     text: |-
       ✅ <b>No active programs right now.</b>
 
       <i>Check back soon for new initiatives!</i>
+
+  contract:
+    aliases: [contracts, address, addresses, token, tokens]
+    link_preview: false
+    text: |-
+      📋 <b>Contract Addresses</b>
+
+      <b>Ethereum Network:</b>
+      🪙 vKOIN: <code>0xa50ad3a559A10f384a5bB2e27516f63E0B937b1A</code>
+
+      <b>Base Network:</b>
+      🪙 vKOIN: <code>0x9b61660Cb1a6920E9c912570cD210020B956F34E</code>
+
+      <b>Koinos Chain:</b>
+      ⟠ vETH: <code>1Tf1QKv3gVYLjq34yURSHw5ErTYbFjqTG</code>
+      💲 vUSDT: <code>12VoHz41a4HtfiyhTWbg9RXqGMRbYk6pXh</code>
+      💵 vUSDC: <code>1N8iYrYEJdCVK1rhbqv3qZUzHcpoeKmFnj</code>
+      🪙 KOIN: <code>19GYjDBVXU7keLbYvMLazsGQn3GTWHjHkK</code>
+
+      <b>Solana Network:</b>
+      🟣 vKOIN: <code>8AUxdPqYU4FBy5rZDhMJxTniPs7gtEfdHjP3UKM71m6G</code>
+
+      💡 <i>vKOIN is a wrapped representation of KOIN on other chains. Native KOIN exists only on Koinos.</i>
+      ⚠️ <i>The old KOIN contract 15DJN4a8SgrbGhhGksSBASiSYjGnMU8dGL is deprecated. Use the address above.</i>
+
+  bridge:
+    aliases: [bridges, vortex]
+    link_preview: false
+    text: |-
+      🌉 <b>Bridges</b>
+
+      ⚡ <b>Vortex — Ethereum ⇄ Koinos</b>
+      The only bridge between Koinos and Ethereum. It locks your tokens on one chain and mints the wrapped version on the other. The transfer does not finish by itself: you return and press <b>Redeem</b> on the target chain, and the Koinos-side redeem costs mana.
+      🔗 <a href="https://vortexbridge.io/bridge">vortexbridge.io/bridge</a>
+
+      🌀 <b>Portal (Wormhole) — Ethereum ⇄ Base / Solana</b>
+      Moves vKOIN between Ethereum, Base and Solana. It does not support Koinos, so vKOIN held on Base or Solana sits two bridges away from native KOIN.
+      🔗 <a href="https://portalbridge.com">portalbridge.com</a>
+
+      🧪 <b>Test with dust first — on each bridge, every time.</b> Send a tiny amount, redeem it, and see it arrive in your own wallet setup before you send real size.
+
+      ⚠️ <i>Both are third-party services. Check the domain in your address bar before you sign anything.</i>
 
 menus:
   guides: |-
@@ -193,43 +240,27 @@ menus:
     💡 <i>Start your Koinos journey with these essential guides!</i>
 
   exchanges: |-
-    💱 <b>Trade $KOIN Everywhere</b>
+    💱 <b>Where to get $KOIN</b>
 
-    📈 <b>Centralized Exchanges:</b>
-    🏪 <a href="https://www.mexc.com/exchange/KOIN_USDT">MEXC</a> - Global Exchange
-    ⚡ <a href="https://bingx.com/en/spot/KOINUSDT/">BingX</a> - Crypto Trading
+    🔄 <b>Decentralized Exchanges:</b>
+    ⚡ <a href="https://koindx.com/">KoinDX</a> - native KOIN on Koinos
+    🪙 <a href="https://swap.defillama.com/?chain=ethereum&amp;from=0x0000000000000000000000000000000000000000&amp;tab=swap&amp;to=0xa50ad3a559A10f384a5bB2e27516f63E0B937b1A">DeFiLlama</a> - vKOIN on Ethereum
+    🔵 <a href="https://swap.defillama.com/?chain=base&amp;from=0x0000000000000000000000000000000000000000&amp;tab=swap&amp;to=0x9b61660Cb1a6920E9c912570cD210020B956F34E">DeFiLlama</a> - vKOIN on Base
+    🟣 <a href="https://jup.ag/swap?sell=So11111111111111111111111111111111111111112&amp;buy=8AUxdPqYU4FBy5rZDhMJxTniPs7gtEfdHjP3UKM71m6G">Jupiter</a> - vKOIN on Solana
 
-    🔥 <b>More listings coming soon!</b>
-    <i>We're always working on new exchange partnerships</i>
+    📖 <a href="https://koinos.io/get-koin">Step-by-step guide on koinos.io</a>
 
-    ⚠️ <i>Free to request exchanges, but no guarantees on timing!</i>
+    💡 <i>vKOIN is the wrapped version on other chains, native KOIN lives on Koinos. See /bridge and /contract.</i>
 
   wallets: |-
     💳 <b>Secure Your $KOIN</b>
 
-    <i>Choose the perfect wallet for your needs:</i>
-
-    🦊 <b>Kondor Wallet</b> - <i>Suggested • Active Development</i>
+    🦊 <b>Kondor Wallet</b>
     💻 Browser extension for Chrome &amp; Brave
-    👨‍💻 Created by Julian Gonzalez
-    🔗 <a href="https://chrome.google.com/webstore/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl">Download</a> | <a href="https://github.com/joticajulian/kondor">GitHub</a>
-    💝 <a href="https://github.com/sponsors/joticajulian">Support Julian</a>
+    🔗 <a href="https://chromewebstore.google.com/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl">Download</a> | <a href="https://github.com/joticajulian/kondor">GitHub</a>
+    💝 <a href="https://github.com/sponsors/joticajulian">Support the developer</a>
 
-    🌐 <b>Portal Wallet</b> - <i>Web Based</i>
-    🖥️ No installation required
-    🔗 <a href="https://portal.armana.io">Access Portal</a>
-
-    👑 <b>Sovrano Wallet</b> - <i>Suggested • Active Development</i>
-    🔗 <a href="https://sovrano.io/">Visit Sovrano</a>
-
-    💎 <b>Tangem Wallet</b> - <i>Hardware Security</i>
-    🛡️ Physical card wallet
-    📱 iOS &amp; Android app support
-    ⚠️ <i>More secure but limited dApp support</i>
-    🔗 <a href="https://tangem.com">Learn More</a>
-
-    🔐 <b>Security Tip:</b> <i>Use multiple wallets for different purposes!</i>
-
+    🔒 <b>Security:</b> <i>Never share your seed phrase. Nobody from the team will ever ask for it.</i>
   international: |-
     🌍 <b>Global Koinos Community</b>
 
