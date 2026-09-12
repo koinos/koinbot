@@ -75,13 +75,12 @@ def create_main_menu_keyboard():
 
     # Row 3: Community & Support
     keyboard.add(
-        InlineKeyboardButton("🌍 International", callback_data="international"),
+        InlineKeyboardButton("🔥 Stake/Burn", callback_data="stake"),
         InlineKeyboardButton("📱 Social Media", callback_data="social")
     )
 
     # Row 4: Advanced
     keyboard.add(
-        InlineKeyboardButton("🔥 Stake/Burn", callback_data="stake"),
         InlineKeyboardButton("📄 Whitepaper", callback_data="whitepaper")
     )
 
@@ -355,7 +354,7 @@ _register_content_commands()
 # --- Menu Redirects ---
 # Commands that are part of the main menu buttons redirect to the main menu.
 @bot.message_handler(commands=[
-    'guides', 'docs', 'international', 'exchange', 'exchanges', 'cex',
+    'guides', 'docs', 'exchange', 'exchanges', 'cex',
     'buy', 'media', 'social', 'stake', 'whitepaper', 'wallets'
 ])
 async def handle_menu_redirects(message):
@@ -551,7 +550,10 @@ async def handle_callback_query(call):
         elif call.data == "projects":
             text = content.render_projects_overview(PROJECTS)
         else:
-            text = MENUS.get(call.data, "")
+            # A keyboard from an older message can carry a callback for a
+            # menu that no longer exists. Fall back to the main menu
+            # rather than acknowledging a press that does nothing.
+            text = MENUS.get(call.data) or TEXTS['main_menu']
 
         if text:
             await bot.edit_message_text(text, call.message.chat.id, call.message.message_id,

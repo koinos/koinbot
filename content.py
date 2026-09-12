@@ -28,13 +28,13 @@ DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 RESERVED_COMMANDS = {
     'info', 'start', 'menu', 'report',
     'projects', 'project', 'updates', 'x', 'kai',
-    'guides', 'docs', 'international', 'exchange', 'exchanges', 'cex',
+    'guides', 'docs', 'exchange', 'exchanges', 'cex',
     'buy', 'media', 'social', 'stake', 'whitepaper', 'wallets',
 }
 
 # Menu keys the inline keyboard in telegrambot.py links to.
 REQUIRED_MENUS = {
-    'guides', 'exchanges', 'wallets', 'international',
+    'guides', 'exchanges', 'wallets',
     'social', 'stake', 'whitepaper',
 }
 
