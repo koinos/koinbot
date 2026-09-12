@@ -11,6 +11,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 import content
 import kai
+import price
 import xfeed
 
 # Configure logging
@@ -331,7 +332,10 @@ def _register_content_commands():
 
         async def handler(message, _text=cfg['text'],
                           _preview=cfg.get('link_preview', False)):
-            await send_message(message.chat.id, _text, link_preview=_preview)
+            # price.render() is a no-op unless the body carries the
+            # {price} placeholder, and never raises.
+            body = await price.render(_text)
+            await send_message(message.chat.id, body, link_preview=_preview)
 
         bot.message_handler(commands=commands)(handler)
 
