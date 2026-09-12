@@ -258,13 +258,22 @@ async def send_info(message):
 @bot.message_handler(commands=['report'])
 async def send_report(message):
     """Alerts administrators."""
+    # The moderator handles live in content/commands.yml so the list can be
+    # corrected by pull request instead of a rebuild. The fallback keeps
+    # /report working if the key is ever removed.
+    # content.py only HTML-validates texts.main_menu and texts.welcome, so
+    # this value is escaped rather than trusted: it is a list of handles,
+    # never markup, and a content edit must not be able to break /report.
+    mods = html.escape(str(TEXTS.get('report_mods') or
+                           '@kuixihe @weleleliano @saleh_hawi'), quote=False)
     report_text = """🚨 <b>ADMIN ALERT</b> 🚨
 
 <b>Someone needs attention from moderators:</b>
-@kuixihe @weleleliano @saleh_hawi @fifty2kph
+{mods}
 
 ⚠️ <i>Reported by:</i> {username}
 🕐 <i>Time:</i> {time}""".format(
+        mods=mods,
         username=mention(message.from_user),
         time=datetime.now().strftime("%H:%M:%S")
     )

@@ -386,14 +386,12 @@ def _build(native, bridged, read_ts):
         f'{_whole(native["liquidity_usd"])} pool liquidity</i>',
         '',
         f'🌉 <b>{_money(bridged["price"])}</b> — bridged vKOIN on Ethereum, Base and Solana',
-        f'<i>DexScreener · median of {bridged["pairs"]} pools · '
-        f'{_whole(bridged["liquidity_usd"])} pool liquidity</i>',
+        f'<i>DexScreener · median of {bridged["pairs"]} pools</i>',
         '',
         f'⚠️ <i>Thin liquidity: the KoinDX pools hold about {_whole(stable)} of '
         f'stablecoin, so a few hundred dollars moves this number by double digits. '
         f'Reference only, not financial advice.</i>',
-        f'🕐 <i>Read {stamp} · last KoinDX trade '
-        f'{native["trade_age_hours"]:.1f} h ago</i>',
+        f'🕐 <i>Read {stamp}</i>',
     ])
 
 
