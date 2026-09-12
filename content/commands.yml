@@ -9,10 +9,15 @@
 # texts:    shared building blocks used by the bot code.
 
 texts:
+  # Handles pinged by /report. Keep this current: it is the list a member
+  # sees when they ask for a moderator.
+  report_mods: '@kuixihe @weleleliano @saleh_hawi'
+
   main_menu: |-
     🔮 <b>Welcome to Koinos Bot!</b>
 
     🔥 <b>Quick Commands:</b>
+    /help - All commands
     /claim - Token claiming info
     /price - Price discussion rules
     /contract - Token contract addresses
@@ -29,6 +34,7 @@ texts:
     🎉 <b>Welcome {usernames}!</b>
 
     🔥 <b>Quick Commands:</b>
+    /help - All commands
     /claim - Token claiming info
     /price - Price discussion rules
     /contract - Token contract addresses
@@ -208,6 +214,51 @@ commands:
 
       💡 <i>vKOIN is a wrapped representation of KOIN on other chains. Native KOIN exists only on Koinos.</i>
       ⚠️ <i>The old KOIN contract 15DJN4a8SgrbGhhGksSBASiSYjGnMU8dGL is deprecated. Use the address above.</i>
+
+  help:
+    aliases: [commands]
+    link_preview: false
+    text: |-
+      🧭 <b>Koinos Bot — all commands</b>
+
+      💰 <b>Token</b>
+      /price — live KOIN price
+      /contract — all token contract addresses
+      /supply — KOIN virtual supply
+      /vhpsupply — VHP total supply
+      /claim — how to claim your KOIN
+
+      🌉 <b>Move and trade</b>
+      /bridge — bridges to and from Koinos
+      /exchanges — where to get KOIN
+      /wallets — wallets for Koinos
+      /stake — burn KOIN for VHP
+
+      📚 <b>Learn</b>
+      /mana — how fee-free transactions work
+      /guides — documentation and guides
+      /whitepaper — the Koinos whitepaper
+      /roadmap — development roadmap
+      /website — koinos.io
+
+      🔗 <b>Ecosystem</b>
+      /projects — every project on Koinos
+      /project &lt;name&gt; — details for one project
+      /updates — latest project updates
+      /programs — active community programs
+
+      💬 <b>Community</b>
+      /x — latest post from @KoinosNetwork
+      /social — official channels
+      /international — groups in your language
+      /rules — community guidelines
+      /report — call a moderator
+      /menu — the button menu (also /start and /info)
+
+      🤖 <b>Ask the AI</b>
+      Write <b>@kai</b> followed by your question in the main group.
+
+      💡 <i>Aliases: /commands for this list, /address for /contract, /bridges for /bridge, /docs for /guides, /buy or /cex for /exchanges, /media for /social.</i>
 
   bridge:
     aliases: [bridges, vortex]
