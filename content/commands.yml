@@ -1,0 +1,392 @@
+# koinbot content — editable via pull request.
+#
+# After a PR touching only content/ is merged into main, the bot
+# auto-deploys the change within ~2 minutes. Text is Telegram HTML
+# (<b>, <i>, <a href="...">). Keep it valid — CI checks this file.
+#
+# commands: each key becomes a /command. "aliases" adds more names.
+# menus:    texts behind the inline-keyboard buttons.
+# texts:    shared building blocks used by the bot code.
+
+texts:
+  # Handles pinged by /report. Keep this current: it is the list a member
+  # sees when they ask for a moderator.
+  report_mods: '@kuixihe @weleleliano @saleh_hawi'
+
+  main_menu: |-
+    🔮 <b>Welcome to Koinos Bot!</b>
+
+    🔥 <b>Quick Commands:</b>
+    /help - All commands
+    /claim - Token claiming info
+    /price - Price discussion rules
+    /contract - Token contract addresses
+    /bridge - Bridges to and from Koinos
+    /supply - Token supply info
+    /mana - Learn about Mana
+    /updates - Latest project updates
+    /roadmap - Development roadmap
+    /rules - Community guidelines
+
+    💫 <i>Choose an option below to get started!</i>
+
+  welcome: |-
+    🎉 <b>Welcome {usernames}!</b>
+
+    🔥 <b>Quick Commands:</b>
+    /help - All commands
+    /claim - Token claiming info
+    /price - Price discussion rules
+    /contract - Token contract addresses
+    /bridge - Bridges to and from Koinos
+    /supply - Token supply info
+    /mana - Learn about Mana
+    /updates - Latest project updates
+    /roadmap - Development roadmap
+    /rules - Community guidelines
+
+    💫 <i>Choose an option below to get started!</i>
+
+commands:
+  mana:
+    text: |-
+      🔮 <b>The Magic of Mana</b>
+
+      ✨ <b>What is Mana?</b>
+      Mana is the secret sauce that makes Koinos special! Every KOIN token contains inherent Mana that powers blockchain transactions.
+
+      🎮 <b>Just Like Video Games:</b>
+      • Use Mana for transactions
+      • Mana regenerates automatically over time
+      • Never run out permanently
+      • Use Koinos forever without fees!
+
+      ⚡ <b>Key Benefits:</b>
+      • No transaction fees
+      • Sustainable usage model
+      • Beginner-friendly experience
+
+      🔗 <b>Deep Dive:</b>
+      <a href="https://docs.koinos.io/overview/mana/">Complete Mana Guide</a>
+
+      💫 <i>Welcome to fee-less blockchain interactions!</i>
+
+  rules:
+    aliases: [guidelines]
+    text: |-
+      🛡️ <b>Koinos Community Guidelines</b>
+
+      <i>Building the future together requires great collaboration!</i>
+
+      ✅ <b>Encouraged Activities:</b>
+      • 🚀 Share your projects and innovations
+      • 💡 Discuss features, plans, and ideas
+      • 🔄 Provide constructive feedback
+      • 🤝 Maintain respectful conversations
+      • 🌱 Help grow our ecosystem
+      • 📚 Share insights and resources
+
+      ❌ <b>Please Avoid:</b>
+      • 🚫 Promoting non-utility tokens
+      • 📈 Price speculation (use @thekoinosarmy)
+      • 🗣️ Off-topic discussions
+      • 🎭 Disrespectful behavior
+
+      🎯 <b>Our Mission:</b>
+      Create a positive, innovative environment where everyone can learn, build, and grow together.
+
+      📄 <b>Complete Guidelines:</b>
+      🔗 <a href="https://docs.google.com/document/d/1-WYFlj7p3U0GG5Q5_OQPR5tzRD4WlG3FKNj4u9Lz3vQ/edit?usp=sharing">Read Full Guidelines</a>
+
+      💫 <i>Welcome to our amazing community!</i>
+
+  claim:
+    text: |-
+      🎁 <b>Token Claim Information</b>
+
+      ⚠️ <b>Eligibility Check:</b>
+      ✅ Must have held ERC-20 KOIN during the snapshot
+      🔍 <a href="https://t.me/koinos_community/109226">Verify Your Address</a>
+
+      💳 <b>You'll Need a Koinos Wallet:</b>
+      🦊 <a href="https://chrome.google.com/webstore/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl">Download Kondor Wallet</a>
+
+      🔐 <b>CRITICAL SECURITY WARNING:</b>
+      🚨 <b>BACKUP YOUR PRIVATE KEYS/SEED PHRASE!</b>
+      🚨 <b>We CANNOT recover lost keys!</b>
+
+      📚 <b>Step-by-Step Guides:</b>
+      📺 <a href="https://youtu.be/l-5dHGqUSj4">Video Tutorial</a>
+      📖 <a href="https://medium.com/@kuixihe/a-complete-guide-to-claiming-koin-tokens-edd20e7d9c40">Written Guide</a>
+
+      ⏰ <b>No Rush:</b>
+      <i>There's no time limit - claim whenever you're ready!</i>
+
+      🔒 <i>Security first, claiming second!</i>
+
+  website:
+    aliases: [websites]
+    link_preview: true
+    text: |-
+      🌐 <b><a href="https://koinos.io">Visit Koinos.io</a></b>
+
+      ✨ <i>Discover the future of blockchain technology!</i>
+
+  supply:
+    link_preview: false
+    text: |-
+      📊 <b>KOIN Virtual Supply</b>
+
+      {supply}
+
+      📈 <b>Learn More:</b>
+      🔗 <a href="https://docs.koinos.io/overview/tokenomics/">Koinos Tokenomics</a>
+
+      💡 <i>Virtual supply includes both circulating KOIN and burned VHP tokens</i>
+
+  vhpsupply:
+    link_preview: false
+    text: |-
+      ⚡ <b>VHP Total Supply</b>
+
+      {vhpsupply}
+
+      📈 <b>Learn More:</b>
+      🔗 <a href="https://docs.koinos.io/overview/tokenomics/">Koinos Tokenomics</a>
+
+      💡 <i>VHP (Virtual Hash Power) is created by burning KOIN tokens</i>
+
+  roadmap:
+    text: |-
+      🗺️ <b>Koinos Development Roadmap</b>
+
+      🚀 <b>Track our progress:</b>
+      📍 <a href="https://koinos.io/#roadmap">Official Koinos Roadmap</a>
+
+      🎯 <b>What's Coming:</b>
+      • Enhanced developer tools
+      • Ecosystem expansion
+      • Performance optimizations
+      • New partnership integrations
+
+      ⚡ <i>The future of blockchain is being built daily!</i>
+
+  price:
+    link_preview: false
+    text: |-
+      📈 <b>KOIN Price</b>
+
+      {price}
+
+      🔎 <b>Check it yourself:</b>
+      • <a href="https://koindx.com/">KoinDX</a> — native KOIN swaps on Koinos
+      • <a href="https://koinosscan.com/chart">koinosscan /chart</a> — native KOIN and bridged vKOIN side by side
+
+      🚨 <b>Keep price talk out of this group!</b>
+      💬 Charts, targets and trading chat: <a href="https://t.me/thekoinosarmy">Koinos Army Telegram</a>
+      💡 <i>This channel is for technology, development and community.</i>
+
+  programs:
+    text: |-
+      ✅ <b>No active programs right now.</b>
+
+      <i>Check back soon for new initiatives!</i>
+
+  contract:
+    aliases: [contracts, address, addresses, token, tokens]
+    link_preview: false
+    text: |-
+      📋 <b>Contract Addresses</b>
+
+      <b>Ethereum Network:</b>
+      🪙 vKOIN: <code>0xa50ad3a559A10f384a5bB2e27516f63E0B937b1A</code>
+
+      <b>Base Network:</b>
+      🪙 vKOIN: <code>0x9b61660Cb1a6920E9c912570cD210020B956F34E</code>
+
+      <b>Koinos Chain:</b>
+      ⟠ vETH: <code>1Tf1QKv3gVYLjq34yURSHw5ErTYbFjqTG</code>
+      💲 vUSDT: <code>12VoHz41a4HtfiyhTWbg9RXqGMRbYk6pXh</code>
+      💵 vUSDC: <code>1N8iYrYEJdCVK1rhbqv3qZUzHcpoeKmFnj</code>
+      🪙 KOIN: <code>19GYjDBVXU7keLbYvMLazsGQn3GTWHjHkK</code>
+
+      <b>Solana Network:</b>
+      🟣 vKOIN: <code>8AUxdPqYU4FBy5rZDhMJxTniPs7gtEfdHjP3UKM71m6G</code>
+
+      💡 <i>vKOIN is a wrapped representation of KOIN on other chains. Native KOIN exists only on Koinos.</i>
+      ⚠️ <i>The old KOIN contract 15DJN4a8SgrbGhhGksSBASiSYjGnMU8dGL is deprecated. Use the address above.</i>
+
+  help:
+    aliases: [commands]
+    link_preview: false
+    text: |-
+      🧭 <b>Koinos Bot — all commands</b>
+
+      💰 <b>Token</b>
+      /price — live KOIN price
+      /contract — all token contract addresses
+      /supply — KOIN virtual supply
+      /vhpsupply — VHP total supply
+      /claim — how to claim your KOIN
+
+      🌉 <b>Move and trade</b>
+      /bridge — bridges to and from Koinos
+      /exchanges — where to get KOIN
+      /wallets — wallets for Koinos
+      /stake — burn KOIN for VHP
+
+      📚 <b>Learn</b>
+      /mana — how fee-free transactions work
+      /guides — documentation and guides
+      /whitepaper — the Koinos whitepaper
+      /roadmap — development roadmap
+      /website — koinos.io
+
+      🔗 <b>Ecosystem</b>
+      /projects — every project on Koinos
+      /project &lt;name&gt; — details for one project
+      /updates — latest project updates
+      /programs — active community programs
+
+      💬 <b>Community</b>
+      /x — latest post from @KoinosNetwork
+      /social — official channels
+      /international — groups in your language
+      /rules — community guidelines
+      /report — call a moderator
+      /menu — the button menu (also /start and /info)
+
+      💡 <i>Aliases: /commands for this list, /address for /contract, /bridges for /bridge, /docs for /guides, /buy or /cex for /exchanges, /media for /social.</i>
+
+  bridge:
+    aliases: [bridges, vortex]
+    link_preview: false
+    text: |-
+      🌉 <b>Bridges</b>
+
+      ⚡ <b>Vortex — Ethereum ⇄ Koinos</b>
+      The only bridge between Koinos and Ethereum. It locks your tokens on one chain and mints the wrapped version on the other. The transfer does not finish by itself: you return and press <b>Redeem</b> on the target chain, and the Koinos-side redeem costs mana.
+      🔗 <a href="https://vortexbridge.io/bridge">vortexbridge.io/bridge</a>
+
+      🌀 <b>Portal (Wormhole) — Ethereum ⇄ Base / Solana</b>
+      Moves vKOIN between Ethereum, Base and Solana. It does not support Koinos, so vKOIN held on Base or Solana sits two bridges away from native KOIN.
+      🔗 <a href="https://portalbridge.com">portalbridge.com</a>
+
+      🧪 <b>Test with dust first — on each bridge, every time.</b> Send a tiny amount, redeem it, and see it arrive in your own wallet setup before you send real size.
+
+      ⚠️ <i>Both are third-party services. Check the domain in your address bar before you sign anything.</i>
+
+menus:
+  guides: |-
+    📚 <b>Koinos Learning Hub</b>
+
+    🎓 <b>Official Documentation:</b>
+    📖 <a href="https://docs.koinos.io">Complete Koinos Docs</a>
+
+    ⚡ <b>Core Concepts:</b>
+    🔮 <a href="https://docs.koinos.io/overview/mana/">Master Mana Mechanics</a>
+
+    💡 <i>Start your Koinos journey with these essential guides!</i>
+
+  exchanges: |-
+    💱 <b>Where to get $KOIN</b>
+
+    🔄 <b>Decentralized Exchanges:</b>
+    ⚡ <a href="https://koindx.com/">KoinDX</a> - native KOIN on Koinos
+    🪙 <a href="https://swap.defillama.com/?chain=ethereum&amp;from=0x0000000000000000000000000000000000000000&amp;tab=swap&amp;to=0xa50ad3a559A10f384a5bB2e27516f63E0B937b1A">DeFiLlama</a> - vKOIN on Ethereum
+    🔵 <a href="https://swap.defillama.com/?chain=base&amp;from=0x0000000000000000000000000000000000000000&amp;tab=swap&amp;to=0x9b61660Cb1a6920E9c912570cD210020B956F34E">DeFiLlama</a> - vKOIN on Base
+    🟣 <a href="https://jup.ag/swap?sell=So11111111111111111111111111111111111111112&amp;buy=8AUxdPqYU4FBy5rZDhMJxTniPs7gtEfdHjP3UKM71m6G">Jupiter</a> - vKOIN on Solana
+
+    📖 <a href="https://koinos.io/get-koin">Step-by-step guide on koinos.io</a>
+
+    💡 <i>vKOIN is the wrapped version on other chains, native KOIN lives on Koinos. See /bridge and /contract.</i>
+
+  wallets: |-
+    💳 <b>Secure Your $KOIN</b>
+
+    🦊 <b>Kondor Wallet</b>
+    💻 Browser extension for Chrome &amp; Brave
+    🔗 <a href="https://chromewebstore.google.com/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl">Download</a> | <a href="https://github.com/joticajulian/kondor">GitHub</a>
+    💝 <a href="https://github.com/sponsors/joticajulian">Support the developer</a>
+
+    🔒 <b>Security:</b> <i>Never share your seed phrase. Nobody from the team will ever ask for it.</i>
+  international: |-
+    🌍 <b>Global Koinos Community</b>
+
+    <i>Connect with Koinos enthusiasts worldwide!</i>
+
+    🇩🇪 <a href="https://t.me/koinosgermany">Deutschland</a> - German Community
+    🇪🇸 <a href="https://t.me/koinoshispano">España</a> - Spanish Community
+    🇨🇳 <a href="https://t.me/koinos_cn">中国</a> - Chinese Community
+    🇮🇹 <a href="https://t.me/+8KIVdg8vhIQ5ZGY0">Italia</a> - Italian Community
+    🇮🇷 <a href="https://t.me/PersianKoinos">ایران</a> - Persian Community
+    🇹🇷 <a href="https://t.me/+ND37ePjNlvc4NGE0">Türkiye</a> - Turkish Community
+    🇷🇺 <a href="https://t.me/koinosnetwork_rus">Россия</a> - Russian Community
+    🇳🇱 <a href="https://t.me/KoinosNederland">Nederland</a> - Dutch Community
+
+    🌟 <i>Missing your language? Help us create a new community!</i>
+
+    🤝 <b>Note:</b> <i>These are unofficial community groups</i>
+
+  social: |-
+    📱 <b>Connect With Koinos</b>
+
+    🏢 <b>Official Channels:</b>
+    🔮 <a href="https://twitter.com/koinosnetwork">Koinos Network</a> - Main Twitter
+    🏗️ <a href="https://twitter.com/TheKoinosGroup">Koinos Group</a> - Development Team
+    💬 <a href="https://discord.koinos.io">Discord Server</a> - Real-time chat
+    📝 <a href="https://medium.com/koinosnetwork">Medium Blog</a> - Deep insights
+    📺 <a href="https://www.youtube.com/@KoinosNetwork">YouTube Channel</a> - Video content
+
+    ⚡ <b>Community Channels:</b>
+    📰 <a href="https://koinosnews.com/">Koinos News</a> - Latest updates
+    🛠️ <a href="https://www.youtube.com/@motoengineer.koinos">Motoengineer</a> - Tech tutorials
+    📢 <a href="https://t.me/KoinosNews">News Telegram</a> - Breaking news
+    🚀 <a href="https://t.me/thekoinosarmy">Koinos Army</a> - Price &amp; trading
+
+    🌍 <i>Don't forget to check /international for local communities!</i>
+
+    💫 <b>Stay updated with the latest from Koinos!</b>
+
+  stake: |-
+    🔥 <b>Earn with Koinos Burning</b>
+
+    💰 <b>Burn $KOIN for rewards!</b>
+    📈 <i>Earn 4-8% APR by burning KOIN for 1 year</i>
+
+    📚 <b>Learn the Basics:</b>
+    🎥 <a href="https://www.youtube.com/watch?v=v9bhaNLuDms">Koinos Overview: Miners, Holders &amp; Developers</a>
+
+    ⛏️ <b>Mining Guide:</b>
+    🎬 <a href="https://youtu.be/pa2kSYSdVnE?si=kxX4BBbjriL29x6m">How to mine $KOIN with $VHP</a>
+
+    🖥️ <b>Run Your Own Node:</b>
+    📖 <a href="https://docs.koinos.io/validators/guides/running-a-node/">Node Setup Guide</a>
+
+    <b>━━━ OR JOIN A POOL ━━━</b>
+
+    🔥 <b>Staking Pools:</b>
+    🌋 <a href="https://fogata.io">Fogata</a> - Professional mining pool
+    💎 <a href="https://burnkoin.com">Burn Koin</a> - Community pool
+
+    ⚡ <i>Choose your preferred way to earn with Koinos!</i>
+
+  whitepaper: |-
+    📄 <b>Koinos Documentation</b>
+
+    📚 <b>Essential Reading:</b>
+    📖 <a href="https://koinos.io/whitepaper/">Official Whitepaper</a> - Complete technical spec
+
+    🎙️ <b>Audio Content:</b>
+    🎧 <a href="https://podcast.thekoinpress.com/episodes/the-koinos-whitepaper">Koin Press Podcast</a> - Whitepaper discussion
+
+    📺 <b>Video Explanations:</b>
+    ▶️ <a href="https://www.youtube.com/watch?v=v-qFFbDvV2c">Community Video</a> - Visual breakdown
+
+    🧠 <i>Understanding Koinos starts with the fundamentals!</i>
+
+    💡 <b>Key Concepts:</b>
+    • Fee-less transactions via Mana
+    • Universal Upgradeability
+    • Proof of Burn consensus
+    • Developer-friendly environment

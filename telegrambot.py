@@ -1,629 +1,641 @@
 import asyncio
-from collections import namedtuple
+import html
+import logging
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 import random
-import requests
-import signal
 import telebot
 from telebot.async_telebot import AsyncTeleBot
-import time
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+import content
+import kai
+import links
+import price
+import xfeed
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+# All user-facing text lives in content/*.yml (updated via pull request).
+TEXTS, CONTENT_COMMANDS, MENUS, PROJECTS = content.load()
+
 bot = AsyncTeleBot(os.environ['TELEGRAM_BOT_TOKEN'])
-chat_id = os.environ['CHAT_ID']
-koinos_io_url = os.environ['KOINOS_IO_URL']
-active_challenges = dict()
-challenge_lock = asyncio.Lock()
-challenge = False
-welcome = True
+# Unverified members: user_id -> chat_id of the group that issued the
+# captcha. The chat binding stops a pending user from clearing their
+# state by answering the captcha somewhere else (e.g. in a DM).
+new_users = {}
+# Users whose captcha outcome (kick or welcome) is currently being
+# processed. They stay in new_users — and therefore gated — until
+# enforcement has actually succeeded; the claim only prevents the
+# same user from being processed twice concurrently.
+captcha_claimed = set()
+# (user_id, chat_id) -> the message id of that user's own captcha in that
+# chat. Without this the answer handler deletes whatever message the
+# sender replied to, which let a pending user delete anyone's message by
+# replying "Koinos" to it. Keyed by the pair, not the user, so a welcome
+# event in a second group cannot overwrite the challenge a user still
+# owes here — the id would then point at an unrelated message.
+captcha_msg_ids = {}
+new_users_lock = asyncio.Lock()
 
-def get_programs():
-    url = f'{koinos_io_url}/api/programs'
-    response = requests.get(url)
-    data = response.json()
-    return data['programs']
+# Configuration
+CAPTCHA_TIMEOUT = 180  # 3 minutes
+BAN_DURATION_DAYS = 7
+REQUEST_TIMEOUT = 10
 
-def make_program_blurb(program):
-    return """⚡️ <b><a href="{url}">{title}</a></b>
-👉 {subtitle}
-{shortDescription}""".format_map(program)
-
-async def send_message(message, link_preview=False, html=True, chat_id=chat_id, reply_markup=None):
-    return await bot.send_message(
-        chat_id,
-        message,
-        parse_mode='html' if html else None,
-        link_preview_options=telebot.types.LinkPreviewOptions(is_disabled=not link_preview),
-        reply_markup=reply_markup)
+# Main group for X auto-posts; unset disables the auto-poster.
+MAIN_CHAT_ID = os.environ.get('MAIN_CHAT_ID', '').strip()
+X_POLL_SECONDS = max(60, int(os.environ.get('X_POLL_SECONDS', '300')))
 
 
-# Handle new member
-@bot.chat_member_handler()
-async def handle_member(member_update):
-    # If the user is not a member, this cannot be a join update
-    if member_update.new_chat_member.status != 'member':
+def mention(user):
+    """Readable, HTML-safe reference to a user (usernames are optional)."""
+    if user.username:
+        return f'@{user.username}'
+    if user.first_name:
+        # A display name is attacker-chosen text that the bot repeats in
+        # the welcome, warning and report messages. Escaping stops
+        # markup but not Telegram's automatic linking of a bare URL, so
+        # a member could name themselves "Claim https://evil.tld" and
+        # have the bot publish a working phishing link.
+        name = links.defang(links.defuse_mentions(user.first_name))[:64]
+        return html.escape(name, quote=False)
+    return f'User{user.id}'
+
+
+def create_main_menu_keyboard():
+    """Create a modern inline keyboard for main navigation"""
+    keyboard = InlineKeyboardMarkup(row_width=2)
+
+    # Row 1: Essential commands
+    keyboard.add(
+        InlineKeyboardButton("📚 Guides", callback_data="guides"),
+        InlineKeyboardButton("🔗 Projects", callback_data="projects")
+    )
+
+    # Row 2: Trading & Info
+    keyboard.add(
+        InlineKeyboardButton("💱 Exchanges", callback_data="exchanges"),
+        InlineKeyboardButton("💳 Wallets", callback_data="wallets")
+    )
+
+    # Row 3: Community & Support
+    keyboard.add(
+        InlineKeyboardButton("🌍 International", callback_data="international"),
+        InlineKeyboardButton("📱 Social Media", callback_data="social")
+    )
+
+    # Row 4: Advanced
+    keyboard.add(
+        InlineKeyboardButton("🔥 Stake/Burn", callback_data="stake"),
+        InlineKeyboardButton("📄 Whitepaper", callback_data="whitepaper")
+    )
+
+    return keyboard
+
+
+async def send_message(chat_id, message, link_preview=False, html=True, reply_markup=None, reply_to=None, thread_id=None):
+    """Universal message sender that uses the provided chat_id."""
+    reply_parameters = None
+    if reply_to is not None:
+        # Replying places the message in the right forum topic;
+        # thread_id keeps it there even if the original is deleted
+        # while we wait (allow_sending_without_reply).
+        reply_parameters = telebot.types.ReplyParameters(
+            message_id=reply_to, allow_sending_without_reply=True)
+    try:
+        return await bot.send_message(
+            chat_id,
+            message,
+            parse_mode='HTML' if html else None,
+            link_preview_options=telebot.types.LinkPreviewOptions(is_disabled=not link_preview),
+            reply_markup=reply_markup,
+            reply_parameters=reply_parameters,
+            message_thread_id=thread_id
+        )
+    except Exception as e:
+        logger.error(f"Failed to send message to {chat_id}: {e}")
+        return None
+
+
+async def schedule_message_deletion(chat_id, message_id, delay_seconds=60):
+    """Schedules a message to be deleted after a specified delay."""
+    await asyncio.sleep(delay_seconds)
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception as e:
+        logger.warning(f"Could not delete message {message_id} from chat {chat_id}: {e}")
+
+# --- Main Handlers ---
+
+# The captcha gate MUST be the first registered message handler:
+# pyTelegramBotAPI stops at the first match, so registering it first
+# means no other handler — commands included — ever runs for an
+# unverified user. It covers media too, or a pending spammer could
+# simply post a photo/sticker with a phishing caption.
+# Everything a user can post: the library's media list plus the
+# forwardable giveaway types (classified as "service" upstream) and
+# paid media. Unknown names are harmless — they simply never match.
+GATED_CONTENT_TYPES = telebot.util.content_type_media + [
+    'giveaway', 'giveaway_winners', 'paid_media',
+]
+
+
+@bot.message_handler(func=lambda m: m.from_user is not None and m.from_user.id in new_users,
+                     content_types=GATED_CONTENT_TYPES)
+async def captcha_gate(message):
+    """Intercepts all messages from unverified users, enforcing the captcha."""
+    async with new_users_lock:
+        pending = message.from_user.id in new_users
+    if not pending:
         return
 
-    # If the user's old status is not left or kicked, this cannot be a join update
-    old_status = member_update.old_chat_member.status
-    if old_status != 'left' and old_status != 'kicked':
-        return
+    try:
+        await bot.delete_message(message.chat.id, message.id)
+    except:
+        pass
 
-    # If the from user is the chat owner or an admin, don't display the challenge, just the welcome message
-    from_user = await bot.get_chat_member(chat_id, member_update.from_user.id)
-    if from_user.status == 'creator' or from_user.status == 'administrator' or not challenge:
-        if member_update.new_chat_member.user.username != None:
-            await welcome_new_users([f'@{member_update.new_chat_member.user.username}'])
-        elif member_update.new_chat_member.user.first_name != None:
-            await welcome_new_users([member_update.new_chat_member.user.first_name])
-        return
-
-    await challenge_user(member_update.new_chat_member.user)
-
-
-# Welcome command for admin manual welcome
-@bot.message_handler(commands=['welcome'])
-async def handle_welcome(message):
-    global welcome
-
-    from_user = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    if from_user.status != 'creator' and from_user.status != 'administrator':
-        await send_message('Only an admin can use the welcome command')
-        return
-
-    if message.text == "/welcome on":
-        await send_message("Welcome message is on")
-        welcome = True
-        return
-    elif message.text == "/welcome off":
-        await send_message("Welcome message is off")
-        welcome = False
-        return
-    elif message.text == "/welcome":
-        message = 'An admin can set the welcome to on or off with /welcome [on,off].\nWelcome message is '
-
-        if welcome:
-            message += 'on.'
-        else:
-            message += 'off.'
-
-        await send_message(message)
-        return
-
-    await bot.delete_message(message.chat.id, message.id)
-
-    usernames = []
-
-    for entity in message.entities:
-        if entity.type != 'mention':
-            continue
-
-        usernames.append(message.text[slice(entity.offset, entity.offset + entity.length)])
-
-    await welcome_new_users(usernames, True)
-
-
-# Deletes joined message
-@bot.message_handler(content_types=['new_chat_members'])
-async def handle_new_users(message):
-    await bot.delete_message(message.chat.id, message.id)
-
-
-# Challenge command for testing
-#@bot.message_handler(commands=['test_challenge'])
-#async def handle_challenge(message):
-#    await challenge_user(message.from_user)
-
-
-@bot.message_handler(commands=['challenge'])
-async def handle_challenge(message):
-    global challenge
-    from_user = await bot.get_chat_member(message.chat.id, message.from_user.id)
-
-    if from_user.status != 'creator' and from_user.status != 'administrator':
-        await send_message('Only an admin can change the challenge setting')
-        return
-
-    if message.text == '/challenge on':
-        challenge = True
-        await send_message('User challenge is on.')
-    elif message.text == '/challenge off':
-        challenge = False
-        await send_message('User challenge is off.')
+    # Only a text reply to the captcha counts as an answer attempt —
+    # media replies are ordinary violations.
+    async with new_users_lock:
+        own_captcha = captcha_msg_ids.get((message.from_user.id, message.chat.id))
+    is_answer = (message.content_type == 'text'
+                 and message.reply_to_message is not None
+                 and own_captcha is not None
+                 and message.reply_to_message.id == own_captcha)
+    if is_answer:
+        await handle_captcha_response(message)
     else:
-        message = 'An admin can set challenge to on or off with /challenge [on,off].\nUser challenge is '
-
-        if challenge:
-            message += 'on.'
-        else:
-            message += 'off.'
-
-        await send_message(message)
-
-
-# Create user challenge
-async def challenge_user(user):
-    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True, selective=True)
-    options = ['Koinos', 'Bitcoin', 'Chainge']
-    random.shuffle(options)
-    markup.add(*options)
-
-    captcha_messages = list()
-
-    async with challenge_lock:
-        name = ""
-
-        if user.username != None:
-            name = f" @{user.username}"
-        elif user.first_name != None:
-            name = " " + user.first_name
-
-        captcha_message = await send_message(f"Welcome{name}, what is the name of this project?", reply_markup=markup)
-
-        captcha_messages.append( captcha_message )
-        active_challenges[user.id] = captcha_message.id
-
-    await asyncio.sleep(180)
-    for captcha_message in captcha_messages:
+        logger.warning(f"User {message.from_user.username} ({message.from_user.id}) tried to send message before completing captcha")
+        warning_msg = await send_message(
+            message.chat.id,
+            f"⚠️ <b>{mention(message.from_user)}</b>, please complete the security check first!"
+        )
+        await asyncio.sleep(3)
         try:
-            await bot.delete_message(captcha_message.chat.id, captcha_message.id)
+            await bot.delete_message(warning_msg.chat.id, warning_msg.message_id)
         except:
             pass
 
-    async with challenge_lock:
-        if user.id in active_challenges:
-            del active_challenges[user.id]
-            await kick_user(user)
 
+@bot.message_handler(content_types=['new_chat_members'])
+async def handle_welcome(message):
+    """Handles new members, presenting them with a captcha."""
+    current_chat_id = message.chat.id
 
-# Handle user challenge
-@bot.message_handler(func=lambda message: message.reply_to_message != None)
-async def handle_new_user_response(message):
-    async with challenge_lock:
-        print( active_challenges )
-        if message.from_user.id not in active_challenges:
-            return
+    # Register the members as unverified BEFORE any await, so a member
+    # who posts immediately cannot race past the captcha gate.
+    async with new_users_lock:
+        for member in message.new_chat_members:
+            # setdefault, not assignment: a welcome event in a second
+            # group must not rebind a user who is still pending here,
+            # or their original gate can be cleared from elsewhere.
+            new_users.setdefault(member.id, current_chat_id)
 
-        if message.reply_to_message.id != active_challenges[message.from_user.id]:
-            return
+    try:
+        await bot.delete_message(current_chat_id, message.id)
+    except:
+        pass  # Bot may not have admin rights to delete, proceed anyway
 
-        del active_challenges[message.from_user.id]
+    try:
+        from_user = await bot.get_chat_member(current_chat_id, message.from_user.id)
+        is_admin = from_user.status in ['creator', 'administrator']
+    except Exception as e:
+        logger.warning(f"get_chat_member failed, treating adder as non-admin: {e}")
+        is_admin = False
 
-    await bot.delete_message(message.chat.id, message.reply_to_message.id)
-    await bot.delete_message(message.chat.id, message.id)
-
-    if message.text != 'Koinos':
-        await kick_user(message.from_user)
+    # If added by an admin or the owner, welcome them directly
+    if is_admin:
+        async with new_users_lock:
+            for member in message.new_chat_members:
+                # Scoped to this chat, so an admin of an unrelated group
+                # cannot lift the gate a different group issued.
+                if new_users.get(member.id) == current_chat_id:
+                    new_users.pop(member.id, None)
+                    captcha_msg_ids.pop((member.id, current_chat_id), None)
+        await welcome_new_users(message, message.new_chat_members)
         return
 
-    if message.from_user.username != None:
-        await welcome_new_users([f'@{message.from_user.username}'])
-    elif message.from_user.first_name != None:
-        await welcome_new_users([message.from_user.first_name])
+    # For all other new members, present the captcha challenge
+    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True, selective=True, resize_keyboard=True)
+    options = ['🔮 Koinos', '₿ Bitcoin', '🔷 Ethereum']
+    random.shuffle(options)
+    markup.add(*options)
+
+    # member id -> that member's challenge message, so the timeout can
+    # decide per member whether the challenge may be taken down.
+    challenges = {}
+    for member in message.new_chat_members:
+        welcome_text = f"""🎉 <b>Welcome {mention(member)}!</b>
+
+🛡️ <i>Quick security check:</i>
+What is the name of this blockchain project?
+
+⏰ <i>You have 3 minutes to respond...</i>"""
+
+        captcha_msg = await send_message(current_chat_id, welcome_text, reply_markup=markup)
+        if captcha_msg:
+            challenges[member.id] = captcha_msg
+            async with new_users_lock:
+                # Only while they are still pending HERE: a challenge
+                # that lands after the user was already cleared would
+                # otherwise leave an entry nothing ever removes.
+                if new_users.get(member.id) == current_chat_id:
+                    captcha_msg_ids[(member.id, current_chat_id)] = captcha_msg.message_id
+
+    # Wait for the timeout, then enforce.
+    await asyncio.sleep(CAPTCHA_TIMEOUT)
+
+    async with new_users_lock:
+        expired = [m for m in message.new_chat_members
+                   if new_users.get(m.id) == current_chat_id
+                   and m.id not in captcha_claimed]
+        for member in expired:
+            captcha_claimed.add(member.id)
+    # Kick outside the lock — kick_user awaits the Telegram API. The
+    # user stays registered (and gated) until the kick has actually
+    # succeeded; on failure they simply remain pending.
+    unresolved = set()
+    for member in expired:
+        kicked = await kick_user(current_chat_id, member)
+        async with new_users_lock:
+            captcha_claimed.discard(member.id)
+            if kicked:
+                captcha_msg_ids.pop((member.id, current_chat_id), None)
+                new_users.pop(member.id, None)
+            else:
+                unresolved.add(member.id)
+
+    # Take challenges down only AFTER enforcement, and never for a user
+    # whose kick failed: they are still gated, and since only a reply to
+    # their own challenge counts as an answer, deleting it first would
+    # leave them unable to answer at all while every message they send
+    # is still removed. Their challenge stays up until they resolve it.
+    for member_id, challenge in challenges.items():
+        if member_id in unresolved:
+            continue
+        try:
+            await bot.delete_message(challenge.chat.id, challenge.message_id)
+        except:
+            pass
 
 
-# Kick user
-async def kick_user(user):
-    await bot.kick_chat_member(chat_id, user.id, until_date=datetime.today() + timedelta(days=7) )
+@bot.message_handler(commands=['info', 'start', 'menu'])
+async def send_info(message):
+    """Displays the main info menu and deletes the user's command."""
+    try:
+        await bot.delete_message(message.chat.id, message.message_id)
+    except Exception as e:
+        logger.warning(f"Could not delete command message: {e}")
+
+    sent_message = await send_message(message.chat.id, TEXTS['main_menu'],
+                                      reply_markup=create_main_menu_keyboard())
+    if sent_message:
+        asyncio.create_task(schedule_message_deletion(sent_message.chat.id, sent_message.message_id))
 
 
-# User welcome message
-async def welcome_new_users(usernames, force=False):
-    global welcome
-    if not welcome and not force:
-        return
-
-    programs = get_programs()
-    active_program_message = None
-    has_program_image = False
-
-    if len(programs) > 0:
-        for program in programs:
-            if not program['featured']:
-                continue
-
-            active_program_message = f"""
-
-🔮 Featured Program:
-
-{make_program_blurb(program)}"""
-
-            if program['images'] != None and program['images']['banner'] != None:
-                has_program_image = True
-                active_program_message = f"""<a href="{program['images']['banner']}">&#8205;</a>""" + active_program_message
-
-    response = ""
-
-    if len(usernames) > 1:
-        usernames[-1] = 'and ' + usernames[-1]
-
-    username_list = ''
-    if len(usernames) > 2:
-        username_list = ', '.join(usernames)
-    else:
-        username_list = ' '.join(usernames)
-
-    response = f"""Welcome {username_list}!
-
-To get started, we recommend you take a look at current /programs and take a moment to review the /rules.
-
-Please feel free to ask questions!"""
-
-    if active_program_message != None:
-        response += active_program_message
-
-    response += """
-
-🚨 Remember: Admins will never DM you first. They will never ask for your keys or seed phrase. \
-If you suspect someone is impersonating an admin, please /report them.
-"""
-
-    welcome_message = await send_message(response, link_preview=has_program_image, reply_markup=telebot.types.ReplyKeyboardRemove(selective=True))
-
-    await asyncio.sleep(180)
-    await bot.delete_message(welcome_message.chat.id, welcome_message.id)
-
-
-# Handle user leaving messager
-@bot.message_handler(content_types=['left_chat_member'])
-async def delete_leave_message(message):
-    await bot.delete_message(message.chat.id, message.id)
-
-
-# List commands
-@bot.message_handler(commands=['help'])
-async def send_help(message):
-    await send_message("""
-You may use the following Commands:
-/claim
-/guides
-/exchanges
-/international
-/price
-/programs
-/projects
-/roadmap
-/rules
-/social
-/stake
-/supply
-/vhpsupply
-/wallets
-/website
-/whitepaper
-""")
-
-#report
 @bot.message_handler(commands=['report'])
 async def send_report(message):
-    await send_message("""
-Admins, someone needs to be banned
-@kuixihe @weleleliano @saleh_hawi @fifty2kph
-""")
+    """Alerts administrators."""
+    # The moderator handles live in content/commands.yml so the list can be
+    # corrected by pull request instead of a rebuild. The fallback keeps
+    # /report working if the key is ever removed.
+    # content.py only HTML-validates texts.main_menu and texts.welcome, so
+    # this value is escaped rather than trusted: it is a list of handles,
+    # never markup, and a content edit must not be able to break /report.
+    mods = html.escape(str(TEXTS.get('report_mods') or
+                           '@kuixihe @weleleliano @saleh_hawi'), quote=False)
+    report_text = """🚨 <b>ADMIN ALERT</b> 🚨
+
+<b>Someone needs attention from moderators:</b>
+{mods}
+
+⚠️ <i>Reported by:</i> {username}
+🕐 <i>Time:</i> {time}""".format(
+        mods=mods,
+        username=mention(message.from_user),
+        time=datetime.now().strftime("%H:%M:%S")
+    )
+
+    await send_message(message.chat.id, report_text)
 
 
-#website
-@bot.message_handler(commands=['website', 'websites'])
-async def send_website(message):
-    await send_message('<a href="https://koinos.io">Koinos Website</a>', True)
+# --- Projects & Updates (rendered from content/projects.yml) ---
 
-
-#stake
-@bot.message_handler(commands=['stake'])
-async def send_stake(message):
-    await send_message("""
-🔥 Burn KOIN (similar to staking) for 1 year and earn 4-8% APR!
-
-❗ <a href="https://www.youtube.com/watch?v=v9bhaNLuDms">Koinos Overview: Miners, Holders, and Developers</a>
-
-⛏️ <a href="https://youtu.be/pa2kSYSdVnE?si=kxX4BBbjriL29x6m">How to mine $KOIN with $VHP</a>
-
-⌨️ <a href="https://docs.koinos.io/validators/guides/running-a-node/">Run your own node</a>
-
-<b>--or--</b>
-
-🔥 Join a Pool!
-<a href="https://fogata.io">Fogata</a>
-<a href="https://burnkoin.com">Burn Koin</a>
-""")
-
-#whitepaper
-@bot.message_handler(commands=['whitepaper'])
-async def send_whitepaper(message):
-    await send_message("""
-📄 <a href="https://koinos.io/whitepaper/">Official Whitepaper</a>
-
-🎤️ <a href="https://podcast.thekoinpress.com/episodes/the-koinos-whitepaper">Koin Press PodCast on White Paper</a>
-
-▶️ <a href="https://www.youtube.com/watch?v=v-qFFbDvV2c">Community Member Video</a>
-""")
-
-
-#Get KOIN Virtual Supply
-def get_virtual_supply():
-    url = 'https://checker.koiner.app/koin/virtual-supply'
-    response = requests.get(url)
-    data = response.json()
-    return data
-
-
-@bot.message_handler(commands=['supply'])
-async def handle_supply(message):
-    data = get_virtual_supply()
-    await send_message(f"""The Virtual Supply ($KOIN+$VHP) is: {data}.
-
-For more information, read about Koinos' <a href="https://docs.koinos.io/overview/tokenomics/">tokenomics</a>!""")
-
-
-#Get VHP Total Supply
-def get_vhp_supply():
-    url = 'https://checker.koiner.app/vhp/total-supply'
-    response = requests.get(url)
-    data = response.json()
-    return data
-
-
-@bot.message_handler(commands=['vhpsupply'])
-async def handle_vhp_supply(message):
-    data = get_vhp_supply()
-    await send_message(f"""The Total Supply of $VHP is: {data}.
-
-For more information, read about Koinos' <a href="https://docs.koinos.io/overview/tokenomics/">tokenomics</a>!""")
-
-
-#link to Koinos Forum Guides#
-@bot.message_handler(commands=['guides', 'docs'])
-async def handle_guides(message):
-    await send_message("""
-📄 <a href="https://docs.koinos.io">Official Koinos documentation</a>
-
-🌁 <a href="https://www.youtube.com/watch?v=UFniurcWDcM">How to bridge with Chainge Finance</a>
-
-🔮 <a href="https://docs.koinos.io/overview/mana/">Everything you need to know about Mana</a>
-""")
-
-
-#Link to Various social groups
-@bot.message_handler(commands=['international'])
-async def handle_international(message):
-    await send_message("""🌍 Unofficial International Groups 🌏
-
-🇩🇪 <a href="https://t.me/koinosgermany">Deutsch</a>
-🇪🇸 <a href="https://t.me/koinoshispano">Español</a>
-🇨🇳 <a href="https://t.me/koinos_cn">中文</a>
-🇮🇹 <a href="https://t.me/+8KIVdg8vhIQ5ZGY0">Italiano</a>
-🇮🇷 <a href="https://t.me/PersianKoinos">Persian</a>
-🇹🇷 <a href="https://t.me/+ND37ePjNlvc4NGE0">Turkish</a>
-🇷🇺 <a href="https://t.me/koinosnetwork_rus">Russian</a>
-🇳🇱 <a href="https://t.me/KoinosNederland">Dutch</a>
-""")
-
-
-@bot.message_handler(commands=['exchange','exchanges','cex','buy'])
-async def handle_exchanges(message):
-    await send_message("""🔮 $KOIN is supported on the following exchanges
-
-🌁 <b>Bridges</b>:
-<a href="https://dapp.chainge.finance/?fromChain=ETH&toChain=KOIN&fromToken=USDT&toToken=KOIN">Chainge</a>
-
-🌐 <b>DEXs</b>:
-<a href="https://app.uniswap.org/explore/tokens/ethereum/0xed11c9bcf69fdd2eefd9fe751bfca32f171d53ae">Uniswap</a>
-<a href="https://app.koindx.com/swap">KoinDX</a>
-
-📈 <b>CEXs</b>:
-<a href="https://www.mexc.com/exchange/KOIN_USDT">MEXC</a>
-<a href="https://bingx.com/en/spot/KOINUSDT/">BingX</a>
-<a href="https://exchange.lcx.com/trade/KOIN-EUR">LCX</a>
-
-🚨 Exchange Listings are always being pursued! We cannot discuss potential or in progress listings. \
-You are free to request specific exchanges but do not be disappointed when you do not receive a response.
-""")
-
-#Mana Descriptor
-@bot.message_handler(commands=['mana'])
-async def hanlde_mana(message):
-    await send_message("""
-🔮 Mana is behind the magic of Koinos. Every KOIN inherently contains Mana, \
-which is used when using the Koinos blockchain. And just like in video games, \
-your Mana recharges over time letting you continue to use Koinos forever!
-
-<a href="https://docs.koinos.io/overview/mana/">Learn more about Mana!</a>
-""")
-
-
-#Media Links
-@bot.message_handler(commands=['media','social'])
-async def handle_media(message):
-    await send_message("""
-🔮 <b>Official Koinos Media</b>
-<a href="https://twitter.com/koinosnetwork">Koinos Network X</a>
-<a href="https://twitter.com/TheKoinosGroup">Koinos Group X</a>
-<a href="https://discord.koinos.io">Discord</a>
-<a href="https://medium.com/koinosnetwork">Medium</a>
-<a href="https://www.youtube.com/@KoinosNetwork">YouTube</a>
-
-⚡ <b>Unofficial Koinos Media</b>
-<a href="https://koinosnews.com/">Koinos News</a>
-<a href="https://www.youtube.com/@motoengineer.koinos">motoengineer YouTube</a>
-<a href="https://t.me/KoinosNews">Koinos News Telegram</a>
-<a href="https://t.me/thekoinosarmy">Koinos Army Telegram</a>
-
-Also check out /international for international communities!
-""")
-
-
-#Listing of Koinos Projects
 @bot.message_handler(commands=['projects'])
 async def handle_projects(message):
-    await send_message("""
-🔮 Existing Koinos Projects 🔮
-
-📄 <b>dApps:</b>
-<a href="https://koindx.com">KoinDX</a>
-<a href="https://kollection.app">Kollection</a>
-<a href="https://koincity.com">Koincity</a>
-<a href="https://koinosbox.com/nicknames">Nicknames</a>
-<a href="https://kanvas-app.com">Kanvas</a>
-<a href="https://koinosgarden.com">Koinos Garden</a>
-
-🎮 <b>Games:</b>
-<a href="https://www.lordsforsaken.com/">Lord's Forsaken</a>
-<a href="https://planetkoinos.com/space_striker.html">Space Striker</a>
-
-⛏️ <b>Mining Pools:</b>
-<a href="https://fogata.io">Fogata</a>
-<a href="https://burnkoin.com">Burn Koin</a>
-
-🔍 <b>Block Explorers:</b>
-<a href="https://koiner.app">Koiner</a>
-<a href="https://koinosblocks.com">KoinosBlocks</a>
-
-💳 <b>Wallets:</b>
-<a href="https://chrome.google.com/webstore/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl">Kondor</a>
-<a href="https://konio.io">Konio</a>
-<a href="https://portal.armana.io">Portal</a>
-
-💻 <b>Misc:</b>
-<a href="https://planetkoinos.com/koinos_ai.html">Koinos AI</a>
-""")
+    """Lists all ecosystem projects, grouped by category."""
+    await send_message(message.chat.id, content.render_projects_overview(PROJECTS))
 
 
-#Link to Koinos Roadmap
-@bot.message_handler(commands=['roadmap'])
-async def handle_roadmap(message):
-   await send_message("""
-📍 <a href="https://koinos.io/#roadmap">The official Koinos Network roadmap</a>
-""")
+@bot.message_handler(commands=['project'])
+async def handle_project(message):
+    """Shows details and latest updates for a single project."""
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        ids = ', '.join(p['id'] for p in PROJECTS)
+        if len(ids) > 3500:
+            ids = ids[:3500] + '…'
+        await send_message(
+            message.chat.id,
+            f'🔎 <b>Usage:</b> /project &lt;name&gt;\n\n<b>Available:</b> {ids}'
+        )
+        return
+    project = content.find_project(PROJECTS, parts[1])
+    if project is None:
+        # Reflected user input: defang before escaping, or
+        # "/project https://evil.tld" posts a live link as the bot.
+        safe_query = html.escape(
+            links.defang(links.defuse_mentions(parts[1][:100])), quote=False)
+        await send_message(
+            message.chat.id,
+            f'❓ No project found for "{safe_query}". Try /projects for the full list.'
+        )
+        return
+    await send_message(message.chat.id, content.render_project_detail(project))
 
 
-#Link to price chat and MEXC
-@bot.message_handler(commands=['price'])
-async def handle_price(message):
-    await send_message("""🚨 Please keep price chats out of this group. \
-To talk about price, please visit the <a href="https://t.me/thekoinosarmy">Koinos Army Telegram</a>!
-
-💵 Find the price of $KOIN on <a href="https://www.coingecko.com/en/coins/koinos">CoinGecko</a>.""")
+@bot.message_handler(commands=['updates'])
+async def handle_updates(message):
+    """Shows the latest updates across all projects."""
+    await send_message(message.chat.id, content.render_updates(PROJECTS))
 
 
-#Provides information about Koinos Wallets
-@bot.message_handler(commands=['wallets'])
-async def handle_wallets(message):
-    await send_message("""💳 These are the recommended wallets to use with Koinos! \
-Choose one or use a combination for security and accessibility!
-
-⚡️ <a href="https://chrome.google.com/webstore/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl"><b>Kondor Wallet</b></a>
-💻 Browser extension wallet for Chrome and Brave
-Created by Julian Gonzalez
-<a href="https://github.com/joticajulian/kondor">Kondor Github</a>
-<a href="https://github.com/sponsors/joticajulian">Sponsor Julian</a>
-
-⚡️ <a href="https://konio.io"><b>Konio Wallet</b></a>
-📱 Mobile Wallet for iOS & Android
-Created by Adriano Foschi
-<a href="https://github.com/konio-io/konio-mobile">Koinio Github</a>
-
-⚡️ <a href="https://tangem.com"><b>Tangem Wallet</b></a>
-📱 Hardware Wallet for iOS & Android
-More secure but less dApp support
-""")
+@bot.message_handler(commands=['x'])
+async def handle_x(message):
+    """Shows the latest X post from @KoinosNetwork."""
+    post = await xfeed.get_latest_cached()
+    if post is None:
+        await send_message(message.chat.id, xfeed.fallback_message(), link_preview=True)
+        return
+    await send_message(
+        message.chat.id,
+        xfeed.format_post(post, f'🐦 <b>Latest post from {xfeed.PROFILE_NAME}</b>'),
+        link_preview=True,
+    )
 
 
-#Give Claim Information
-@bot.message_handler(commands=['claim'])
-async def handle_claim(message):
-    await send_message("""
+# --- Static commands (defined in content/commands.yml) ---
 
-⚠️ Claim information ⚠️
+def _register_content_commands():
+    for name, cfg in CONTENT_COMMANDS.items():
+        commands = [name, *cfg.get('aliases', [])]
 
-⚡️ You are only eligible if you held your ERC-20 KOIN token during the snapshot. \
-To verify, find your wallet address in this <a href="https://t.me/koinos_community/109226">snapshot record</a>.
+        async def handler(message, _text=cfg['text'],
+                          _preview=cfg.get('link_preview', False)):
+            # price.render() is a no-op unless the body carries the
+            # {price} placeholder, and never raises.
+            body = await price.render(_text)
+            await send_message(message.chat.id, body, link_preview=_preview)
 
-⚡️ You will need a Koinos Wallet to hold your main net $KOIN tokens! Use \
-<a href="https://chrome.google.com/webstore/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl">Kondor</a> to manage your $KOIN.
+        bot.message_handler(commands=commands)(handler)
 
-🚨 SAVE YOUR PRIVATE KEYS OR SEED PHRASES!!! 🚨
 
-🚨 Seriously, did you back up your private key or seed phrase? We cannot recover them if you lose them.
+_register_content_commands()
 
-▶️ <a href="https://youtu.be/l-5dHGqUSj4">Video Tutorial on how to claim.</a>
 
-📄 <a href="https://medium.com/@kuixihe/a-complete-guide-to-claiming-koin-tokens-edd20e7d9c40">Document tutorial on how to claim.</a>
+# --- Menu Redirects ---
+# Commands that are part of the main menu buttons redirect to the main menu.
+@bot.message_handler(commands=[
+    'guides', 'docs', 'international', 'exchange', 'exchanges', 'cex',
+    'buy', 'media', 'social', 'stake', 'whitepaper', 'wallets'
+])
+async def handle_menu_redirects(message):
+    """Handles commands that are now buttons in the main menu by showing the menu."""
+    await send_info(message)
 
-⚡️ There is no time limit to claiming. You may claim at any time!
-""")
 
-@bot.message_handler(commands=['programs'])
-async def handle_programs(message):
-    programs = get_programs()
+# --- Kai (@kai) — AI assistant via the Koinos AI worker network ---
 
-    if len(programs) == 0:
-        await send_message("🚨 There are no active programs at this time.")
+async def _typing_loop(chat_id, thread_id):
+    """Re-sends the typing indicator while Kai waits on the network;
+    without it the bot looks dead during a cold model load."""
+    while True:
+        try:
+            await bot.send_chat_action(chat_id, 'typing', message_thread_id=thread_id)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.debug(f'typing indicator failed: {e}')
+        await asyncio.sleep(4)
+
+
+@bot.message_handler(func=lambda m: kai.is_trigger(m.text), content_types=['text'])
+async def handle_kai(message):
+    """Answers @kai mentions in the main group via the Koinos AI network.
+
+    Unverified users never reach this handler — the captcha gate is
+    registered first and pyTelegramBotAPI stops at the first match.
+    """
+    if not kai.enabled():
+        return
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    if not MAIN_CHAT_ID or str(chat_id) != MAIN_CHAT_ID:
+        # Kai is exclusive to the official group; in DMs say where to
+        # find it (cooldown-gated so DMs can't farm bot output),
+        # everywhere else stay silent.
+        if message.chat.type == 'private' and kai.user_cooldown_remaining(user_id) == 0:
+            await send_message(chat_id, kai.GROUP_ONLY_TEXT)
         return
 
-    messageEntry = namedtuple("messageEntry", ["message", "has_image"])
-    messages = []
+    thread_id = message.message_thread_id if getattr(message, 'is_topic_message', False) else None
 
-    for program in programs:
-        has_image = False
+    # Every Kai interaction — including help and error notices —
+    # consumes the per-user cooldown, so no reply path can be spammed.
+    cooldown = kai.user_cooldown_remaining(user_id)
+    if cooldown:
+        if kai.should_notify_cooldown(user_id):
+            notice = await send_message(
+                chat_id,
+                f'🕐 {mention(message.from_user)}, one question per '
+                f'{kai.cooldown_seconds()}s — try again in {cooldown}s.',
+                reply_to=message.message_id, thread_id=thread_id)
+            if notice:
+                asyncio.create_task(schedule_message_deletion(
+                    notice.chat.id, notice.message_id, delay_seconds=8))
+        return
+    question = kai.extract_question(message.text)
+    if not question:
+        # Bare "@kai" → the live model list (falls back to plain help
+        # when the gateway is unreachable).
+        ids = await kai.list_models()
+        await send_message(
+            chat_id,
+            kai.render_models(ids) if ids else kai.HELP_TEXT,
+            reply_to=message.message_id, thread_id=thread_id)
+        return
+    # "@kai <model> <question>" → that model; otherwise the default.
+    model, question = await kai.split_model_prefix(question)
+    if model and not question:
+        await send_message(
+            chat_id,
+            f'ℹ️ Add a question after the model, e.g. '
+            f'<code>@kai {html.escape(model.rsplit(":", 1)[-1], quote=False)} what is mana?</code>',
+            reply_to=message.message_id, thread_id=thread_id)
+        return
+    # Admission first, then the quota window: a busy rejection must not
+    # charge the 15-minute window.
+    if not kai.acquire_slot():
+        if kai.busy_notice_allowed():
+            await send_message(chat_id, kai.BUSY_TEXT,
+                               reply_to=message.message_id, thread_id=thread_id)
+        return
+    if not kai.window_allows():
+        kai.release_slot()
+        if kai.quota_notice_allowed():
+            await send_message(chat_id, kai.QUOTA_TEXT,
+                               reply_to=message.message_id, thread_id=thread_id)
+        return
 
-        message = f"""{make_program_blurb(program)}"""
+    typing_task = asyncio.create_task(_typing_loop(chat_id, thread_id))
+    try:
+        result = await kai.ask(question, model)
+    finally:
+        kai.release_slot()
+        typing_task.cancel()
+    await send_message(chat_id, result['text'],
+                       reply_to=message.message_id, thread_id=thread_id)
 
-        if program['images'] != None and program['images']['banner'] != None:
-            has_image = True
-            message = f"""<a href="{program['images']['banner']}">&#8205;</a>""" + message
 
-        if program['featured']:
-            messages.insert(0, messageEntry(message, has_image))
+# --- Helper Functions ---
+
+async def handle_captcha_response(message):
+    """Handles the user's response to the captcha question."""
+    user_id = message.from_user.id
+    # Claim the user without unregistering them: they stay gated while
+    # their outcome is processed, and a double submission returns here
+    # instead of being processed twice. The answer only counts in the
+    # chat whose captcha is pending.
+    async with new_users_lock:
+        if new_users.get(user_id) != message.chat.id or user_id in captcha_claimed:
+            return
+        captcha_claimed.add(user_id)
+
+    try:
+        await bot.delete_message(message.chat.id, message.reply_to_message.id)
+        await bot.delete_message(message.chat.id, message.id)
+    except:
+        pass
+
+    correct_answers = ['🔮 Koinos', 'Koinos', 'koinos', 'KOINOS']
+    if message.text not in correct_answers:
+        goodbye_msg = await send_message(
+            message.chat.id,
+            f"❌ <b>Incorrect answer, {mention(message.from_user)}</b>\n\n"
+            f"🚪 <i>Please try again when you're ready to join our community!</i>"
+        )
+        await asyncio.sleep(2)
+        try:
+            await bot.delete_message(goodbye_msg.chat.id, goodbye_msg.message_id)
+        except:
+            pass
+        kicked = await kick_user(message.chat.id, message.from_user)
+        async with new_users_lock:
+            captcha_claimed.discard(user_id)
+            # Unregister only after a successful kick — otherwise the
+            # user stays gated instead of silently verified.
+            if kicked:
+                new_users.pop(user_id, None)
+                captcha_msg_ids.pop((user_id, message.chat.id), None)
+        return
+
+    async with new_users_lock:
+        captcha_claimed.discard(user_id)
+        new_users.pop(user_id, None)
+        captcha_msg_ids.pop((user_id, message.chat.id), None)
+    await welcome_new_users(message, [message.from_user])
+
+
+async def kick_user(chat_id, user):
+    """Kicks a user from the chat. Returns True on success."""
+    try:
+        await bot.kick_chat_member(chat_id, user.id, until_date=datetime.today() + timedelta(days=BAN_DURATION_DAYS))
+        logger.info(f"Kicked user {user.username} ({user.id}) for failing captcha")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to kick user {user.username}: {e}")
+        return False
+
+
+async def welcome_new_users(message, users):
+    """Sends a welcome message to verified new users."""
+    usernames = [mention(user) for user in users]
+    if len(usernames) > 1:
+        usernames[-1] = 'and ' + usernames[-1]
+    username_list = ', '.join(usernames) if len(usernames) > 2 else ' '.join(usernames)
+
+    help_text = TEXTS['welcome'].replace('{usernames}', username_list)
+
+    sent_message = await send_message(
+        message.chat.id,
+        help_text,
+        reply_markup=create_main_menu_keyboard()
+    )
+    if sent_message:
+        asyncio.create_task(schedule_message_deletion(sent_message.chat.id, sent_message.message_id))
+
+
+@bot.message_handler(content_types=['left_chat_member'])
+async def delete_leave_message(message):
+    """Cleans up "user has left" messages."""
+    try:
+        await bot.delete_message(message.chat.id, message.id)
+    except:
+        pass
+
+# --- Callback Query Handler ---
+
+@bot.callback_query_handler(func=lambda call: True)
+async def handle_callback_query(call):
+    """Handles all inline keyboard button presses."""
+    try:
+        if call.data == "main_menu":
+            text = TEXTS['main_menu']
+        elif call.data == "projects":
+            text = content.render_projects_overview(PROJECTS)
         else:
-            messages.append(messageEntry(message, has_image))
+            # A keyboard from an older message can carry a callback for a
+            # menu that no longer exists. Fall back to the main menu
+            # rather than acknowledging a press that does nothing.
+            text = MENUS.get(call.data) or TEXTS['main_menu']
 
-    for entry in messages:
-        await send_message(entry.message, entry.has_image)
+        if text:
+            await bot.edit_message_text(text, call.message.chat.id, call.message.message_id,
+                                        parse_mode='HTML', reply_markup=create_main_menu_keyboard())
 
-@bot.message_handler(commands=['rules','guidelines'])
-async def handle_rules(message):
-    await send_message("""Welcome to the Koinos Telegram community!
+    except Exception as e:
+        logger.error(f"Callback error: {e}")
 
-We kindly ask you follow these guidelines to help create a positive and innovative environment.
+    await bot.answer_callback_query(call.id)
 
-✅ Share your projects, discuss features, plans, and seek feedback.
-
-✅ Discuss and build dApps, features, and developments.
-
-✅ Share constructive feedback that leads to improvement.
-
-✅ Maintain a professional, respectful, and valuable conversations.
-
-✅ Grow the ecosystem with insights, resources, and feedback.
-
-✅ Avoid promoting non-utility tokens, projects, or dApps.
-
-✅ Keep discussions on-topic and avoid unrelated content.
-
-✅ Uphold these guidelines and foster a welcoming community.
-
-📄 View complete guidelines \
-<a href="https://docs.google.com/document/d/1-WYFlj7p3U0GG5Q5_OQPR5tzRD4WlG3FKNj4u9Lz3vQ/edit?usp=sharing">here</a>.
-""")
-
-# Start polling
-async def start_polling():
-    await bot.polling(non_stop=True, allowed_updates=['message','chat_member'])
-
-# Gracefully stop polling
-async def stop_polling():
-    await bot.stop_polling()  # This will stop the polling process
-    await bot.close_session()  # Close the bot's aiohttp session
+# --- Main Execution ---
 
 async def main():
+    logger.info("🚀 Koinos Bot starting up...")
+    if MAIN_CHAT_ID:
+        asyncio.create_task(
+            xfeed.autopost_loop(send_message, int(MAIN_CHAT_ID), X_POLL_SECONDS))
+    else:
+        logger.info("MAIN_CHAT_ID not set — X auto-posting disabled")
+    if kai.enabled() and MAIN_CHAT_ID:
+        logger.info("Kai (@kai) enabled for the main group")
+    else:
+        logger.info("Kai (@kai) disabled (KAI_API_URL or MAIN_CHAT_ID not set)")
     try:
-        await start_polling()
+        await bot.polling(non_stop=True)
     except (KeyboardInterrupt, SystemExit):
-        print("Gracefully stopping the bot...")
-        await stop_polling()
+        logger.info("🛑 Koinos Bot shutting down...")
+        await bot.stop_polling()
+        await bot.close_session()
 
 if __name__ == '__main__':
     asyncio.run(main())

@@ -1,14 +1,8 @@
-aiohappyeyeballs==2.4.3
-aiohttp==3.10.8
-aiosignal==1.3.1
-attrs==24.2.0
-certifi==2024.8.30
-charset-normalizer==3.3.2
-frozenlist==1.4.1
-idna==3.10
-multidict==6.1.0
+# Top-level dependencies; transitive deps are resolved by pip.
+# Keep aiohttp current: its HTTP parser faces untrusted upstream
+# responses (decompression bomb GHSA-6mq8-rvhq-8wgg, chunked-parse
+# crash GHSA-cq5v-8q36-5273, unbounded trailers GHSA-w2fm-2cpv-w7v5).
 pyTelegramBotAPI==4.23.0
+aiohttp==3.14.3
 python-dotenv==1.0.1
-requests==2.32.3
-urllib3==2.2.3
-yarl==1.13.1
+pyyaml==6.0.2

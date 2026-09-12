@@ -1,2 +1,9 @@
 venv
 .env
+# Any env copy (backups included) holds the bot token. Only the
+# empty example belongs in this public repo.
+.env.*
+!.env.example
+__pycache__/
+state/
+feed/*.xml

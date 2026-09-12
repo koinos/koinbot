@@ -1,0 +1,10 @@
+[Unit]
+Description=Run koinbot content auto-updater every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+RandomizedDelaySec=15
+
+[Install]
+WantedBy=timers.target

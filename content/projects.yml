@@ -1,0 +1,142 @@
+# Koinos ecosystem projects — editable via pull request.
+#
+# To ADD A PROJECT: append an entry with id, name, url, category
+# (emoji and tagline are optional).
+#
+# To ADD AN UPDATE for your project: append to its "updates" list:
+#
+#     updates:
+#       - date: 2026-08-10
+#         text: "V2 launched with support for XYZ"
+#
+# date is YYYY-MM-DD (quoted or unquoted); text may use Telegram HTML
+# (<b>, <i>, <a href="...">). Updates appear in /updates (newest
+# first, across all projects) and in /project <name>.
+#
+# Merged PRs go live on the bot within ~2 minutes.
+#
+# SOURCE OF TRUTH: this list mirrors the ecosystem page on koinos.io
+# (pages/ecosystem.js in koinos/koinos-io-website), in site order within
+# each category, plus Kondor from the site's wallet section. Last synced
+# with koinos.io on 2026-09-12. Do not add a project the site does not
+# list, and re-check the URL before changing one.
+
+projects:
+  - id: koindx
+    name: KoinDX
+    url: https://koindx.com/
+    category: DeFi & Exchanges
+    emoji: 🔄
+    tagline: DEX for token swaps
+
+  - id: trade-koinos
+    name: Trade Koinos
+    url: https://tradekoinos.com/
+    category: DeFi & Exchanges
+    emoji: 📈
+    tagline: On-chain order-book DEX
+
+  - id: ouro
+    name: OURO
+    url: https://ouro.lifestyle/
+    category: dApps & Platforms
+    emoji: 🖼️
+    tagline: KCS-2 NFT marketplace
+
+  - id: discover-koinos
+    name: Discover Koinos
+    url: https://usekoinos.com/
+    category: dApps & Platforms
+    emoji: 🧭
+    tagline: Onboarding preview, no extension needed
+
+  - id: aurvania
+    name: Aurvania
+    url: https://aurvania.quest/
+    category: Gaming
+    emoji: ⚔️
+    tagline: Play-to-own dungeon crawler
+
+  - id: fogata
+    name: Fogata
+    url: https://fogata.io
+    category: Mining & Staking
+    emoji: 🔥
+    tagline: Mining Pool
+
+  - id: burn-koin
+    name: BurnKoin
+    url: https://burnkoin.com
+    category: Mining & Staking
+    emoji: 💎
+    tagline: Mining Pool
+
+  - id: koinosblocks
+    name: Koinos Blocks
+    url: https://koinosblocks.com
+    category: Infrastructure
+    emoji: 📊
+    tagline: Block Explorer
+
+  - id: koinosscan
+    name: Koinosscan
+    url: https://koinosscan.com/
+    category: Infrastructure
+    emoji: 🔍
+    tagline: Explorer for balances and transfers
+
+  - id: koinscan
+    name: Koinscan
+    url: https://www.koinscan.com/
+    category: Infrastructure
+    emoji: 🔎
+    tagline: Explorer with transaction and network analytics
+
+  - id: vortexbridge
+    name: VortexBridge
+    url: https://vortexbridge.io/bridge
+    category: Infrastructure
+    emoji: 🌉
+    tagline: Koinos to Ethereum bridge
+
+  - id: koinos-one
+    name: Koinos One
+    url: https://github.com/koinos/koinos-one
+    category: Infrastructure
+    emoji: 🖥️
+    tagline: Desktop app for running a node (experimental)
+
+  - id: koinoskit
+    name: KoinosKit
+    url: https://koinoskit.site/
+    category: Infrastructure
+    emoji: 🧰
+    tagline: Node, wallet and VHP manager (experimental)
+
+  - id: teleno
+    name: Teleno
+    url: https://github.com/koinos/teleno
+    category: Infrastructure
+    emoji: 🛠️
+    tagline: Monolithic Koinos-compatible node (experimental)
+
+  - id: kondor
+    name: Kondor
+    url: https://chromewebstore.google.com/detail/kondor/ghipkefkpgkladckmlmdnadmcchefhjl
+    category: Wallets
+    emoji: 🦊
+    tagline: Browser Extension
+
+  - id: koinos-ai
+    name: Koinos AI
+    url: https://koinosai.com/
+    category: AI & Tools
+    emoji: 🧠
+    tagline: Local-first AI app and compute network (alpha)
+
+  - id: koin-crew
+    name: Koin Crew
+    url: https://koincrew.com/
+    category: AI & Tools
+    emoji: 🧩
+    tagline: Suite of ecosystem utilities

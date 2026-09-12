@@ -1,0 +1,35 @@
+services:
+  koinbot:
+    build:
+      context: .
+      # Default bridge on the host resolves PyPI to IPv6-only and has no
+      # IPv6 route; the host network stack has working v4+v6.
+      network: host
+    image: koinbot:local
+    container_name: koinbot
+    restart: always
+    env_file: .env
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.5
+    volumes:
+      # Content is mounted so the auto-updater can deploy content-only
+      # merges with a plain restart — no image rebuild needed.
+      - ./content:/app/content:ro
+      # The feed is fetched by a ROOT timer on the host, so its target
+      # directory must not be writable by the container: otherwise a
+      # symlink planted here would turn that root write into an
+      # arbitrary file write on the host. Read-only, root-owned.
+      - ./feed:/app/feed:ro
+      # Only writable path: last-announced X post ID survives restarts.
+      - ./state:/app/state
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

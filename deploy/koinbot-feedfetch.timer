@@ -1,0 +1,10 @@
+# Installed at /etc/systemd/system/koinbot-feedfetch.timer
+[Unit]
+Description=Run koinbot feed fetch every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
