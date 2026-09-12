@@ -133,11 +133,11 @@ commands:
       ✨ <i>Discover the future of blockchain technology!</i>
 
   supply:
+    link_preview: false
     text: |-
       📊 <b>KOIN Virtual Supply</b>
 
-      💰 <b>Current Supply:</b> 🔄 <i>Data source updating...</i>
-      <i>(KOIN + VHP combined)</i>
+      {supply}
 
       📈 <b>Learn More:</b>
       🔗 <a href="https://docs.koinos.io/overview/tokenomics/">Koinos Tokenomics</a>
@@ -145,10 +145,11 @@ commands:
       💡 <i>Virtual supply includes both circulating KOIN and burned VHP tokens</i>
 
   vhpsupply:
+    link_preview: false
     text: |-
       ⚡ <b>VHP Total Supply</b>
 
-      🔥 <b>Current VHP Supply:</b> 🔄 <i>Data source updating...</i>
+      {vhpsupply}
 
       📈 <b>Learn More:</b>
       🔗 <a href="https://docs.koinos.io/overview/tokenomics/">Koinos Tokenomics</a>
