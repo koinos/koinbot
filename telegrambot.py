@@ -75,12 +75,13 @@ def create_main_menu_keyboard():
 
     # Row 3: Community & Support
     keyboard.add(
-        InlineKeyboardButton("🔥 Stake/Burn", callback_data="stake"),
+        InlineKeyboardButton("🌍 International", callback_data="international"),
         InlineKeyboardButton("📱 Social Media", callback_data="social")
     )
 
     # Row 4: Advanced
     keyboard.add(
+        InlineKeyboardButton("🔥 Stake/Burn", callback_data="stake"),
         InlineKeyboardButton("📄 Whitepaper", callback_data="whitepaper")
     )
 
@@ -354,7 +355,7 @@ _register_content_commands()
 # --- Menu Redirects ---
 # Commands that are part of the main menu buttons redirect to the main menu.
 @bot.message_handler(commands=[
-    'guides', 'docs', 'exchange', 'exchanges', 'cex',
+    'guides', 'docs', 'international', 'exchange', 'exchanges', 'cex',
     'buy', 'media', 'social', 'stake', 'whitepaper', 'wallets'
 ])
 async def handle_menu_redirects(message):
